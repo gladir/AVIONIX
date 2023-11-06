@@ -1,6 +1,6 @@
 { @author: Sylvain Maltais (support@gladir.com)
   @created: 2022
-  @website(https://www.gladir.com/geo-commander)
+  @website(https://www.gladir.com/avionix)
   @abstract(Target: Turbo Pascal, Free Pascal)
 }
 
