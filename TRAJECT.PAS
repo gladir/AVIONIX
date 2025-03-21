@@ -21,7 +21,7 @@ BEGIN
  {$ENDIF}
  If(ParamStr(1)='/?')or(ParamStr(1)='--help')or(ParamStr(1)='-h')or
    (ParamStr(1)='/h')or(ParamStr(1)='/H')Then Begin
-  WriteLn('TRAJECT : Cette commande permet de simulation de la ',
+  WriteLn('TRAJECT : Cette commande permet d''effectuer la simulation de la ',
                     'trajectoire d''un avion.');
   WriteLn;
   WriteLn('Syntaxe : TRAJECT [x y vx vy t dt]');
