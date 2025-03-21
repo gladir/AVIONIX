@@ -19,6 +19,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet d'effectuer l'estimation de la distance de décollage.</td>
 	</tr>
 	<tr>
+		<td><b>DESCENTE.PAS</b></td>
+		<td>Cette commande permet d'effectuer la simulation de la descente d'un avion.</td>
+	</tr>
+	<tr>
 		<td><b>FINDPLN.PAS</b></td>
 		<td>Cette commande permet de détecter les avions mentionné dans un texte.</td>
 	</tr>
