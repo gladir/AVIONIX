@@ -31,7 +31,7 @@ Voici la liste des différents fichiers proposés dans l'aviation :
      <td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
     </tr>
 	<tr>
-		<td>TRAJECT.PAS</td>
+		<td><b>TRAJECT.PAS</b></td>
 		<td>Cette commande permet d'effectuer la simulation de la trajectoire d'un avion.</td>
 	</tr>
 </table>
