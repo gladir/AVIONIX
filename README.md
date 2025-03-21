@@ -1,5 +1,5 @@
 # AVIONIX
-Liste de commandes écrit en Pascal pour l'aviation. 
+Liste de commandes écrit en Pascal (Turbo Pascal ou Free Pascal) pour l'aviation. 
 
 <h3>Liste des fichiers</h3>
 
