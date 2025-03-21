@@ -11,6 +11,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<th>Description</th>
 	</tr>
 	<tr>
+		<td><b>DECOL.PAS</b></td>
+		<td>Cette commande permet d'effectuer l'estimation de la distance de décollage.</td>
+	</tr>
+	<tr>
 		<td><b>FINDPLN.PAS</b></td>
 		<td>Cette commande permet de détecter les avions mentionné dans un texte.</td>
 	</tr>
