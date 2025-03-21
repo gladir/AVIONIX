@@ -6,34 +6,38 @@ Liste de commandes écrit en Pascal (Turbo Pascal ou Free Pascal) pour l'aviatio
 Voici la liste des différents fichiers proposés dans l'aviation :
 
 <table>
-  <tr>
-    <th>Nom</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-      <td><b>FINDPLN.PAS</b></td>
-      <td>Cette commande permet de détecter les avions mentionné dans un texte.</td>
-  </tr>
- <tr>
-      <td><b>KM2MILES.PAS</b></td>
-      <td>Cette commande permet de convertir des Km en miles.</td>
-  </tr>
-  <tr>
-      <td><b>MILES2KM.PAS</b></td>
-      <td>Cette commande permet de convertir des miles en Km.</td>
-  </tr>
+	<tr>
+		<th>Nom</th>
+		<th>Description</th>
+	</tr>
+	<tr>
+		<td><b>FINDPLN.PAS</b></td>
+		<td>Cette commande permet de détecter les avions mentionné dans un texte.</td>
+	</tr>
+	<tr>
+		<td><b>ISA.PAS</b></td>
+		<td>Cette commande permet d'indiquer la pression atmosphérique.</td>
+	</tr>
+	<tr>
+		<td><b>KM2MILES.PAS</b></td>
+		<td>Cette commande permet de convertir des Km en miles.</td>
+	</tr>
+	<tr>
+		<td><b>MILES2KM.PAS</b></td>
+		<td>Cette commande permet de convertir des miles en Km.</td>
+  	</tr>
 	<tr>
 		<td><b>MACH.PAS</b></td>
 		<td>Cette commande permet de calculer la vitesse d'un avion.</td>
 	</tr>
-  <tr>
-    <td><b>PLANE.PAS</b></td>
-    <td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
-   </tr>
-    <tr>
-     <td><b>PORTANCE.PAS</b></td>
-     <td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
-    </tr>
+	<tr>
+    		<td><b>PLANE.PAS</b></td>
+    		<td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
+	</tr>
+	<tr>
+		<td><b>PORTANCE.PAS</b></td>
+		<td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
+    	</tr>
 	<tr>
 		<td><b>TRAJECT.PAS</b></td>
 		<td>Cette commande permet d'effectuer la simulation de la trajectoire d'un avion.</td>
