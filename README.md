@@ -26,6 +26,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
     <td><b>PLANE.PAS</b></td>
     <td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
    </tr>
+    <tr>
+     <td><b>PORTANCE.PAS</b></td>
+     <td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
+    </tr>
 </table>
 
 <h2>Compilation</h2>
