@@ -22,6 +22,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
       <td><b>MILES2KM.PAS</b></td>
       <td>Cette commande permet de convertir des miles en Km.</td>
   </tr>
+	<tr>
+		<td><b>MACH.PAS</b></td>
+		<td>Cette commande permet de calculer la vitesse d'un avion.</td>
+	</tr>
   <tr>
     <td><b>PLANE.PAS</b></td>
     <td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
