@@ -11,6 +11,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<th>Description</th>
 	</tr>
 	<tr>
+		<td><b>CAS.PAS</b></td>
+		<td>Cette commande permet de calculer la vitesse anémométrique corrigée (Calibrate Airspeed).</td>
+	</tr>
+	<tr>
 		<td><b>DECOL.PAS</b></td>
 		<td>Cette commande permet d'effectuer l'estimation de la distance de décollage.</td>
 	</tr>
