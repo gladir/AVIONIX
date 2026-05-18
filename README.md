@@ -1,6 +1,10 @@
 # AVIONIX
 Liste de commandes écrit en Pascal (Turbo Pascal ou Free Pascal) pour l'aviation. 
 
+Voici un aperçu de la comme SOUFFLE.PAS (Soufflerie) :
+
+<img width="638" height="479" alt="image" src="https://github.com/user-attachments/assets/3743114c-fac7-4b00-8142-903e68449ffa" />
+
 <h3>Liste des fichiers</h3>
 
 Voici la liste des différents fichiers proposés dans l'aviation :
@@ -50,6 +54,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td><b>PORTANCE.PAS</b></td>
 		<td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
     	</tr>
+	<tr>
+		<td><b>SOUFFLE.PAS</b></td>
+		<td>Cette commande permet de lancer un simulateur de soufflerie en aérodynamique 2D.</td>
+	</tr>
 	<tr>
 		<td><b>TRAJECT.PAS</b></td>
 		<td>Cette commande permet d'effectuer la simulation de la trajectoire d'un avion.</td>
