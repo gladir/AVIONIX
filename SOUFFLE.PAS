@@ -4,10 +4,7 @@
   @website(https://www.gladir.com/avionix)
   @abstract(Target: Turbo Pascal 7, Free Pascal)
   @description: Soufflerie - simulateur aerodynamique 2D pour profils
-                d'aile au format .PRO (compatibles avec les fichiers
-                Liprofil EPPxxx.PRO). L'interface utilisateur reprend
-                le style menu (souris+clavier) du clone Microsoft Paint
-                dans CLONEDRAW/PAINT.PAS.
+                d'aile au format .PRO.
 
   Ligne de commande :
     SOUFFLE [fichier.PRO]
@@ -1432,6 +1429,21 @@ End;
 { --------------------------------------------------------------------- }
 
 BEGIN
+ {$IFDEF FPC}
+  {$IFDEF WINDOWS}
+   SetUseACP(False);
+  {$ENDIF}
+ {$ENDIF}
+ If(ParamStr(1)='/?')or(ParamStr(1)='--help')or
+   (ParamStr(1)='-h')or(ParamCount=0)Then Begin
+  WriteLn('SOUFFLE - Cette commande permet de lancer un simulateur de ',
+          'soufflerie en a'+#130+'rodynamique 2D.');
+  WriteLn;
+  WriteLn('Syntaxe : SOUFFLE [fichier.PRO]');
+  WriteLn;
+  WriteLn(' fichier.PRO  Fichier de profile de soufflerie');
+  Halt;
+ End;
  Initialize;
  If StatusMsg <> '' Then ShowMessage('Soufflerie', StatusMsg);
  MainLoop;
