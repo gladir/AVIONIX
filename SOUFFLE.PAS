@@ -35,7 +35,7 @@ Uses
  {$ENDIF};
 
 Const
- PROG_TITLE         = 'Soufflerie 1.00 - Gladir.com';
+ PROG_TITLE         = 'Soufflerie 1.00 - Avionix';
 
  MENUBAR_HEIGHT     = 20;
  STATUSBAR_HEIGHT   = 20;
@@ -1005,12 +1005,28 @@ Begin
  OutTextXY(X1 + W Div 2 - 8, Y2 - 22, 'OK');
  SetColor(Black);
  ShowMouseCursor;
- { Attend ENTER / ESC / clic. }
+ { Attend que le bouton de la souris soit relache pour ne pas
+   interpreter le clic ayant declenche l'ouverture comme un clic
+   sur OK. On purge aussi les touches en attente (p.ex. Enter qui
+   a valide l'item de menu). }
+ Repeat
+  GetMouseLocal(MouseX, MouseY, MouseButtons);
+  If (MouseButtons And 1) = 0 Then Break;
+  Delay(10);
+ Until False;
+ While KeyPressed Do Begin
+  K := ReadKey;
+  If K = #0 Then If KeyPressed Then ReadKey;
+ End;
+ OldMouseButtons := 0;
+ { Attend ENTER / ESC / espace / nouveau clic. }
  Repeat
   If KeyPressed Then Begin
    K := ReadKey;
-   If K = #0 Then ReadKey;
-   If (K = #13) Or (K = #27) Or (K = ' ') Then Break;
+   If K = #0 Then Begin
+    If KeyPressed Then ReadKey;
+   End
+   Else If (K = #13) Or (K = #27) Or (K = ' ') Then Break;
   End;
   GetMouseLocal(MouseX, MouseY, MouseButtons);
   If ((MouseButtons And 1) <> 0) And ((OldMouseButtons And 1) = 0) Then Begin
@@ -1090,11 +1106,548 @@ Begin
  NeedRedraw := True;
 End;
 
+{ --------------------------------------------------------------------- }
+{ Boite de dialogue d'ouverture de fichier (style PSP.PAS)              }
+{ --------------------------------------------------------------------- }
+
+Const
+ FD_MAXENT  = 256;
+ FD_ROWH    = 12;
+ FD_NAMECOL = 22;
+
+Type
+ TFDEntry = Record
+  Name  : String[64];
+  Size  : LongInt;
+  IsDir : Boolean;
+ End;
+
+Var
+ FD_Dirs   : Array[0..FD_MAXENT-1] Of TFDEntry;
+ FD_Files  : Array[0..FD_MAXENT-1] Of TFDEntry;
+ FD_NDirs  : Integer;
+ FD_NFiles : Integer;
+ FD_CurDir : String;
+ FD_NameBuf: String;
+ FD_Focus  : Integer; { 0=dossiers, 1=fichiers, 2=nom }
+ FD_SelDir, FD_TopDir   : Integer;
+ FD_SelFile, FD_TopFile : Integer;
+ FD_ShowAll : Boolean;
+
+Procedure FD_Sort(Var A: Array Of TFDEntry; N: Integer);
+Var I, J: Integer; T: TFDEntry;
+Begin
+ For I := 0 To N - 2 Do
+  For J := 0 To N - 2 - I Do
+   If UpStr(A[J].Name) > UpStr(A[J+1].Name) Then Begin
+    T := A[J]; A[J] := A[J+1]; A[J+1] := T;
+   End;
+End;
+
+Function FD_HasPROExt(Const Nm: String): Boolean;
+Var L: Integer;
+Begin
+ L := Length(Nm);
+ FD_HasPROExt := (L >= 4) And
+                 (UpCase(Nm[L-3]) = '.') And
+                 (UpCase(Nm[L-2]) = 'P') And
+                 (UpCase(Nm[L-1]) = 'R') And
+                 (UpCase(Nm[L])   = 'O');
+End;
+
+Procedure FD_Scan;
+Var
+ SR : SearchRec;
+ E  : TFDEntry;
+Begin
+ FD_NDirs  := 0;
+ FD_NFiles := 0;
+ GetDir(0, FD_CurDir);
+ FindFirst('*.*', Directory, SR);
+ While DosError = 0 Do Begin
+  If (SR.Attr And Directory) <> 0 Then
+   If (SR.Name <> '.') And (FD_NDirs < FD_MAXENT) Then Begin
+    E.Name := SR.Name; E.IsDir := True; E.Size := 0;
+    FD_Dirs[FD_NDirs] := E;
+    Inc(FD_NDirs);
+   End;
+  FindNext(SR);
+ End;
+ {$IFDEF FPC}
+  FindClose(SR);
+ {$ENDIF}
+ FindFirst('*.*', AnyFile, SR);
+ While DosError = 0 Do Begin
+  If ((SR.Attr And Directory) = 0) And ((SR.Attr And VolumeID) = 0) Then
+   If (FD_ShowAll Or FD_HasPROExt(SR.Name)) And (FD_NFiles < FD_MAXENT) Then Begin
+    E.Name := SR.Name; E.IsDir := False; E.Size := SR.Size;
+    FD_Files[FD_NFiles] := E;
+    Inc(FD_NFiles);
+   End;
+  FindNext(SR);
+ End;
+ {$IFDEF FPC}
+ FindClose(SR);
+ {$ENDIF}
+ FD_Sort(FD_Dirs,  FD_NDirs);
+ FD_Sort(FD_Files, FD_NFiles);
+ If FD_SelDir  >= FD_NDirs  Then FD_SelDir  := 0;
+ If FD_SelFile >= FD_NFiles Then FD_SelFile := 0;
+ FD_TopDir := 0; FD_TopFile := 0;
+End;
+
+Procedure FD_EnsureVisible(Var Top: Integer; Sel, Rows: Integer);
+Begin
+ If Sel < Top Then Top := Sel;
+ If Sel >= Top + Rows Then Top := Sel - Rows + 1;
+ If Top < 0 Then Top := 0;
+End;
+
+Procedure FD_FmtSize(Sz: LongInt; Var S: String);
+Begin
+ Str(Sz, S);
+ While Length(S) < 8 Do S := ' ' + S;
+End;
+
+Procedure FD_DrawBevel(X1, Y1, X2, Y2: Integer; Inset: Boolean);
+Begin
+ If Inset Then Begin
+  SetColor(DarkGray);
+  Line(X1, Y1, X2, Y1); Line(X1, Y1, X1, Y2);
+  SetColor(White);
+  Line(X1, Y2, X2, Y2); Line(X2, Y1, X2, Y2);
+ End
+ Else Begin
+  SetColor(White);
+  Line(X1, Y1, X2, Y1); Line(X1, Y1, X1, Y2);
+  SetColor(DarkGray);
+  Line(X1, Y2, X2, Y2); Line(X2, Y1, X2, Y2);
+ End;
+End;
+
+Procedure FD_DrawButton(X1, Y1, X2, Y2: Integer; Const Caption: String);
+Var W: Integer;
+Begin
+ SetFillStyle(SolidFill, LightGray);
+ Bar(X1, Y1, X2, Y2);
+ FD_DrawBevel(X1, Y1, X2, Y2, False);
+ SetColor(Black);
+ W := TextWidth(Caption);
+ OutTextXY(X1 + (X2 - X1 - W) Div 2, Y1 + ((Y2 - Y1) - 8) Div 2, Caption);
+End;
+
+Procedure FD_DrawList(X1, Y1, X2, Y2: Integer;
+                      Var Arr: Array Of TFDEntry; N, Top, Sel: Integer;
+                      Active, IsDirList: Boolean);
+Var
+ Rows, I, Idx, RY: Integer;
+ Nm, Sz : String;
+Begin
+ SetFillStyle(SolidFill, White);
+ Bar(X1+1, Y1+1, X2-1, Y2-1);
+ Rows := (Y2 - Y1 - 2) Div FD_ROWH;
+ For I := 0 To Rows - 1 Do Begin
+  Idx := Top + I;
+  If Idx >= N Then Break;
+  RY := Y1 + 2 + I * FD_ROWH;
+  If Idx = Sel Then Begin
+   SetFillStyle(SolidFill, Blue);
+   If Not Active Then SetFillStyle(SolidFill, DarkGray);
+   Bar(X1 + 1, RY - 1, X2 - 1, RY + FD_ROWH - 2);
+   SetColor(White);
+  End
+  Else SetColor(Black);
+  If IsDirList Then Nm := '[' + Arr[Idx].Name + ']'
+  Else Nm := Arr[Idx].Name;
+  If Length(Nm) > FD_NAMECOL Then Nm := Copy(Nm, 1, FD_NAMECOL);
+  OutTextXY(X1 + 4, RY, Nm);
+  If Not IsDirList Then Begin
+   FD_FmtSize(Arr[Idx].Size, Sz);
+   OutTextXY(X1 + 4 + FD_NAMECOL * 8 + 8, RY, Sz);
+  End;
+ End;
+ FD_DrawBevel(X1, Y1, X2, Y2, True);
+End;
+
+Function FileOpenDialog(Const Title: String; Var FN: String): Boolean;
+Var
+ DX1, DY1, DX2, DY2 : Integer;
+ DirX1, DirY1, DirX2, DirY2 : Integer;
+ FilX1, FilY1, FilX2, FilY2 : Integer;
+ NamX1, NamY1, NamX2, NamY2 : Integer;
+ OkX1,  OkY1,  OkX2,  OkY2  : Integer;
+ CcX1,  CcY1,  CcX2,  CcY2  : Integer;
+ AllX1, AllY1, AllX2, AllY2 : Integer;
+ DirRows, FileRows : Integer;
+ Done, Result : Boolean;
+ K   : Char;
+ MX, MY, MB, OldMB : Integer;
+ Idx : Integer;
+ S   : String;
+ LastClickT : LongInt;
+ NowT       : LongInt;
+ TickCnt    : LongInt;
+ LastIdx, LastZone : Integer;
+
+ Procedure RedrawAll;
+ Var Path: String;
+ Begin
+  HideMouseCursor;
+  { Cadre principal }
+  SetFillStyle(SolidFill, LightGray);
+  Bar(DX1, DY1, DX2, DY2);
+  FD_DrawBevel(DX1, DY1, DX2, DY2, False);
+
+  { Barre de titre }
+  SetFillStyle(SolidFill, Blue);
+  Bar(DX1 + 2, DY1 + 2, DX2 - 2, DY1 + 16);
+  SetColor(White);
+  OutTextXY(DX1 + 6, DY1 + 5, Title);
+
+  SetColor(Black);
+  OutTextXY(DX1 + 6, DY1 + 22, 'Chemin :');
+  SetFillStyle(SolidFill, White);
+  Bar(DX1 + 60, DY1 + 19, DX2 - 8, DY1 + 33);
+  FD_DrawBevel(DX1 + 60, DY1 + 19, DX2 - 8, DY1 + 33, True);
+  Path := FD_CurDir;
+  If Length(Path) > 60 Then
+   Path := '...' + Copy(Path, Length(Path) - 56, 57);
+  OutTextXY(DX1 + 64, DY1 + 22, Path);
+
+  OutTextXY(DirX1, DY1 + 40, 'Dossiers');
+  OutTextXY(FilX1, DY1 + 40, 'Fichiers (*.PRO)');
+  FD_DrawList(DirX1, DirY1, DirX2, DirY2, FD_Dirs,
+              FD_NDirs, FD_TopDir, FD_SelDir,
+              FD_Focus = 0, True);
+  FD_DrawList(FilX1, FilY1, FilX2, FilY2, FD_Files,
+              FD_NFiles, FD_TopFile, FD_SelFile,
+              FD_Focus = 1, False);
+
+  SetColor(Black);
+  OutTextXY(DX1 + 6, NamY1 + 4, 'Nom :');
+  SetFillStyle(SolidFill, White);
+  Bar(NamX1, NamY1, NamX2, NamY2);
+  FD_DrawBevel(NamX1, NamY1, NamX2, NamY2, True);
+  SetColor(Black);
+  OutTextXY(NamX1 + 4, NamY1 + 4, FD_NameBuf);
+  If FD_Focus = 2 Then
+   OutTextXY(NamX1 + 4 + Length(FD_NameBuf) * 8, NamY1 + 4, '_');
+
+  { Case a cocher "Tous les fichiers" }
+  SetFillStyle(SolidFill, White);
+  Bar(AllX1, AllY1, AllX1 + 10, AllY1 + 10);
+  FD_DrawBevel(AllX1, AllY1, AllX1 + 10, AllY1 + 10, True);
+  If FD_ShowAll Then Begin
+   SetColor(Black);
+   Line(AllX1 + 2, AllY1 + 5, AllX1 + 4, AllY1 + 8);
+   Line(AllX1 + 4, AllY1 + 8, AllX1 + 9, AllY1 + 2);
+  End;
+  SetColor(Black);
+  OutTextXY(AllX1 + 16, AllY1 + 1, 'Tous (*.*)');
+
+  FD_DrawButton(OkX1, OkY1, OkX2, OkY2, 'Ouvrir');
+  FD_DrawButton(CcX1, CcY1, CcX2, CcY2, 'Annuler');
+  ShowMouseCursor;
+ End;
+
+ Procedure DoActivate;
+ Var Sel: String; I: Integer; OldDir: String;
+ Begin
+  { Si focus sur dossiers, on tente d'entrer dedans. }
+  If (FD_Focus = 0) And (FD_NDirs > 0) Then Begin
+   Sel := FD_Dirs[FD_SelDir].Name;
+   OldDir := FD_CurDir;
+   {$I-} ChDir(Sel); {$I+}
+   If IOResult = 0 Then Begin
+    FD_NameBuf := '';
+    FD_SelDir := 0; FD_SelFile := 0;
+    FD_Scan;
+    RedrawAll;
+   End
+   Else
+    FD_CurDir := OldDir;
+   Exit;
+  End;
+  { Sinon : si Nom est un dossier connu, y entrer ; sinon valider. }
+  Sel := FD_NameBuf;
+  If Sel = '' Then
+   If (FD_NFiles > 0) And (FD_SelFile < FD_NFiles) Then
+    Sel := FD_Files[FD_SelFile].Name;
+  If Sel = '' Then Exit;
+  For I := 0 To FD_NDirs - 1 Do
+   If UpStr(FD_Dirs[I].Name) = UpStr(Sel) Then Begin
+    {$I-} ChDir(Sel); {$I+}
+    If IOResult = 0 Then Begin
+     FD_NameBuf := '';
+     FD_SelDir := 0; FD_SelFile := 0;
+     FD_Scan;
+     RedrawAll;
+    End;
+    Exit;
+   End;
+  { Construction du chemin complet. }
+  If (Length(Sel) >= 2) And (Sel[2] = ':') Then FN := Sel
+  Else If (Length(Sel) >= 1) And (Sel[1] = '\') Then FN := Sel
+  Else Begin
+   FN := FD_CurDir;
+   If (Length(FN) > 0) And (FN[Length(FN)] <> '\') Then FN := FN + '\';
+   FN := FN + Sel;
+  End;
+  Result := True;
+  Done   := True;
+ End;
+
+Begin
+ FileOpenDialog := False;
+ FD_NameBuf := '';
+ FD_Focus   := 1;
+ FD_SelDir  := 0; FD_SelFile := 0;
+ FD_TopDir  := 0; FD_TopFile := 0;
+ FD_ShowAll := False;
+ FD_Scan;
+
+ DX1 := (ScreenWidth  - 540) Div 2; If DX1 < 0 Then DX1 := 0;
+ DY1 := (ScreenHeight - 340) Div 2; If DY1 < 0 Then DY1 := 0;
+ DX2 := DX1 + 540;
+ DY2 := DY1 + 340;
+
+ DirX1 := DX1 + 8;   DirY1 := DY1 + 55;
+ DirX2 := DX1 + 180; DirY2 := DY2 - 80;
+ FilX1 := DX1 + 188; FilY1 := DY1 + 55;
+ FilX2 := DX2 - 8;   FilY2 := DY2 - 80;
+
+ NamX1 := DX1 + 50;  NamY1 := DY2 - 72;
+ NamX2 := DX2 - 8;   NamY2 := DY2 - 56;
+
+ AllX1 := DX1 + 8;   AllY1 := DY2 - 48;
+ AllX2 := AllX1 + 10; AllY2 := AllY1 + 10;
+
+ OkX1 := DX2 - 180;  OkY1 := DY2 - 30;
+ OkX2 := DX2 - 100;  OkY2 := DY2 - 8;
+ CcX1 := DX2 - 90;   CcY1 := DY2 - 30;
+ CcX2 := DX2 - 10;   CcY2 := DY2 - 8;
+
+ DirRows  := (DirY2 - DirY1 - 2) Div FD_ROWH;
+ FileRows := (FilY2 - FilY1 - 2) Div FD_ROWH;
+
+ RedrawAll;
+
+ { Purge clavier + attente de relachement du bouton de la souris. }
+ While KeyPressed Do Begin
+  K := ReadKey;
+  If K = #0 Then If KeyPressed Then ReadKey;
+ End;
+ Repeat
+  GetMouseLocal(MX, MY, MB);
+  If (MB And 1) = 0 Then Break;
+  Delay(10);
+ Until False;
+
+ Done := False;
+ Result := False;
+ OldMB := 0;
+ LastClickT := 0;
+ TickCnt := 0;
+ LastIdx := -1;
+ LastZone := -1;
+
+ Repeat
+  If KeyPressed Then Begin
+   K := ReadKey;
+   If K = #0 Then Begin
+    K := ReadKey;
+    Case K Of
+     #72: Begin { Up }
+      If FD_Focus = 0 Then Begin
+       If FD_SelDir > 0 Then Dec(FD_SelDir);
+       FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+      End
+      Else If FD_Focus = 1 Then Begin
+       If FD_SelFile > 0 Then Dec(FD_SelFile);
+       FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+       If FD_SelFile < FD_NFiles Then FD_NameBuf := FD_Files[FD_SelFile].Name;
+      End;
+      RedrawAll;
+     End;
+     #80: Begin { Down }
+      If FD_Focus = 0 Then Begin
+       If FD_SelDir < FD_NDirs - 1 Then Inc(FD_SelDir);
+       FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+      End
+      Else If FD_Focus = 1 Then Begin
+       If FD_SelFile < FD_NFiles - 1 Then Inc(FD_SelFile);
+       FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+       If FD_SelFile < FD_NFiles Then FD_NameBuf := FD_Files[FD_SelFile].Name;
+      End;
+      RedrawAll;
+     End;
+     #73: Begin { PgUp }
+      If FD_Focus = 0 Then Begin
+       Dec(FD_SelDir, DirRows);
+       If FD_SelDir < 0 Then FD_SelDir := 0;
+       FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+      End
+      Else If FD_Focus = 1 Then Begin
+       Dec(FD_SelFile, FileRows);
+       If FD_SelFile < 0 Then FD_SelFile := 0;
+       FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+      End;
+      RedrawAll;
+     End;
+     #81: Begin { PgDn }
+      If FD_Focus = 0 Then Begin
+       Inc(FD_SelDir, DirRows);
+       If FD_SelDir >= FD_NDirs Then FD_SelDir := FD_NDirs - 1;
+       FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+      End
+      Else If FD_Focus = 1 Then Begin
+       Inc(FD_SelFile, FileRows);
+       If FD_SelFile >= FD_NFiles Then FD_SelFile := FD_NFiles - 1;
+       FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+      End;
+      RedrawAll;
+     End;
+     #71: Begin { Home }
+      If FD_Focus = 0 Then Begin FD_SelDir := 0; FD_TopDir := 0; End
+      Else If FD_Focus = 1 Then Begin FD_SelFile := 0; FD_TopFile := 0; End;
+      RedrawAll;
+     End;
+     #79: Begin { End }
+      If FD_Focus = 0 Then Begin
+       FD_SelDir := FD_NDirs - 1;
+       FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+      End
+      Else If FD_Focus = 1 Then Begin
+       FD_SelFile := FD_NFiles - 1;
+       FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+      End;
+      RedrawAll;
+     End;
+    End;
+   End
+   Else Begin
+    Case K Of
+     #27: Done := True;
+     #13: DoActivate;
+     #9 : Begin FD_Focus := (FD_Focus + 1) Mod 3; RedrawAll; End;
+     #8 : If FD_Focus = 2 Then Begin
+           If Length(FD_NameBuf) > 0 Then
+            Delete(FD_NameBuf, Length(FD_NameBuf), 1);
+           RedrawAll;
+          End;
+    Else
+     If K >= ' ' Then Begin
+      If FD_Focus = 2 Then Begin
+       If Length(FD_NameBuf) < 60 Then FD_NameBuf := FD_NameBuf + K;
+       RedrawAll;
+      End
+      Else If FD_Focus = 0 Then Begin
+       For Idx := 0 To FD_NDirs - 1 Do
+        If (Length(FD_Dirs[Idx].Name) > 0) And
+           (UpCase(FD_Dirs[Idx].Name[1]) = UpCase(K)) Then Begin
+         FD_SelDir := Idx;
+         FD_EnsureVisible(FD_TopDir, FD_SelDir, DirRows);
+         Break;
+        End;
+       RedrawAll;
+      End
+      Else If FD_Focus = 1 Then Begin
+       For Idx := 0 To FD_NFiles - 1 Do
+        If (Length(FD_Files[Idx].Name) > 0) And
+           (UpCase(FD_Files[Idx].Name[1]) = UpCase(K)) Then Begin
+         FD_SelFile := Idx;
+         FD_EnsureVisible(FD_TopFile, FD_SelFile, FileRows);
+         FD_NameBuf := FD_Files[FD_SelFile].Name;
+         Break;
+        End;
+       RedrawAll;
+      End;
+     End;
+    End;
+   End;
+  End;
+
+  GetMouseLocal(MX, MY, MB);
+  Inc(TickCnt);
+  If ((OldMB And 1) = 0) And ((MB And 1) <> 0) Then Begin
+   NowT := TickCnt; { compteur d'iterations - sert pour double-clic }
+   If (MX >= DirX1) And (MX <= DirX2) And
+      (MY >= DirY1) And (MY <= DirY2) Then Begin
+    Idx := FD_TopDir + (MY - DirY1 - 2) Div FD_ROWH;
+    If (Idx >= 0) And (Idx < FD_NDirs) Then Begin
+     If (LastZone = 0) And (LastIdx = Idx) And
+        ((NowT - LastClickT) < 35) Then Begin
+      FD_SelDir := Idx; FD_Focus := 0; DoActivate;
+     End
+     Else Begin
+      FD_SelDir := Idx; FD_Focus := 0; RedrawAll;
+     End;
+     LastZone := 0; LastIdx := Idx; LastClickT := NowT;
+    End
+    Else Begin FD_Focus := 0; RedrawAll; LastZone := -1; End;
+   End
+   Else If (MX >= FilX1) And (MX <= FilX2) And
+           (MY >= FilY1) And (MY <= FilY2) Then Begin
+    Idx := FD_TopFile + (MY - FilY1 - 2) Div FD_ROWH;
+    If (Idx >= 0) And (Idx < FD_NFiles) Then Begin
+     If (LastZone = 1) And (LastIdx = Idx) And
+        ((NowT - LastClickT) < 35) Then Begin
+      FD_NameBuf := FD_Files[Idx].Name; FD_Focus := 1; DoActivate;
+     End
+     Else Begin
+      FD_SelFile := Idx;
+      FD_Focus := 1;
+      FD_NameBuf := FD_Files[Idx].Name;
+      RedrawAll;
+     End;
+     LastZone := 1; LastIdx := Idx; LastClickT := NowT;
+    End
+    Else Begin FD_Focus := 1; RedrawAll; LastZone := -1; End;
+   End
+   Else If (MX >= NamX1) And (MX <= NamX2) And
+           (MY >= NamY1) And (MY <= NamY2) Then Begin
+    FD_Focus := 2; RedrawAll; LastZone := -1;
+   End
+   Else If (MX >= AllX1) And (MX <= AllX2 + 100) And
+           (MY >= AllY1) And (MY <= AllY2) Then Begin
+    FD_ShowAll := Not FD_ShowAll;
+    FD_Scan;
+    RedrawAll;
+    LastZone := -1;
+   End
+   Else If (MX >= OkX1) And (MX <= OkX2) And
+           (MY >= OkY1) And (MY <= OkY2) Then DoActivate
+   Else If (MX >= CcX1) And (MX <= CcX2) And
+           (MY >= CcY1) And (MY <= CcY2) Then Done := True
+   Else LastZone := -1;
+  End;
+  OldMB := MB;
+  S := ''; { eviter avertissement variable inutilisee }
+  If S <> '' Then ; { idem }
+  Delay(15);
+ Until Done;
+
+ { Purge bouton et clavier avant de rendre la main. }
+ Repeat
+  GetMouseLocal(MX, MY, MB);
+  If (MB And 1) = 0 Then Break;
+  Delay(10);
+ Until False;
+ While KeyPressed Do Begin
+  K := ReadKey;
+  If K = #0 Then If KeyPressed Then ReadKey;
+ End;
+ MouseButtons := 0;
+ OldMouseButtons := 0;
+
+ FileOpenDialog := Result;
+End;
+
 Procedure ActOpenFile;
 Var FN: String;
 Begin
- FN := Profile.FileName;
- If InputString('Ouvrir', 'Fichier .PRO :', FN) Then Begin
+ FN := '';
+ If FileOpenDialog('Ouvrir un profil .PRO', FN) Then Begin
   If FN <> '' Then Begin
    If LoadProfile(FN, Profile) Then ApplyLoaded
    Else ShowMessage('Erreur', 'Echec du chargement : ' + FN);
@@ -1434,14 +1987,13 @@ BEGIN
    SetUseACP(False);
   {$ENDIF}
  {$ENDIF}
- If(ParamStr(1)='/?')or(ParamStr(1)='--help')or
-   (ParamStr(1)='-h')or(ParamCount=0)Then Begin
+ If(ParamStr(1)='/?')or(ParamStr(1)='--help')or(ParamStr(1)='-h')Then Begin
   WriteLn('SOUFFLE - Cette commande permet de lancer un simulateur de ',
           'soufflerie en a'+#130+'rodynamique 2D.');
   WriteLn;
   WriteLn('Syntaxe : SOUFFLE [fichier.PRO]');
   WriteLn;
-  WriteLn(' fichier.PRO  Fichier de profile de soufflerie');
+  WriteLn(' fichier.PRO  Fichier de profile de soufflerie (optionnel)');
   Halt;
  End;
  Initialize;
