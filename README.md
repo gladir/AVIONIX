@@ -47,6 +47,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de calculer la vitesse d'un avion.</td>
 	</tr>
 	<tr>
+		<td><b>OPENVSP.PAS</b></td>
+		<td>Cette commande permet de lancer un clone d'OpenVSP, un modeleur paramétrique de géométrie d'avions (ailes, fuselages, pods, hélices, conduits) avec vue 3D, analyses (géométrie calculée, masse et centrage, traînée parasite, aérodynamique) et exports STL/OBJ/CSV. Sous Turbo Pascal 7, la version allégée (LITE) est compilée en raison de la limite de 64 Ko de code.</td>
+	</tr>
+	<tr>
     		<td><b>PLANE.PAS</b></td>
     		<td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
 	</tr>
