@@ -91,6 +91,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de calculer la distance et les caps du grand cercle entre deux points (aérodromes ou coordonnées), une route à plusieurs segments, un point d'arrivée, avec déclinaison magnétique et correction de vent.</td>
 	</tr>
 	<tr>
+		<td><b>MONTEE.PAS</b></td>
+		<td>Cette commande permet de calculer le taux de montée, la pente de montée, les plafonds (absolu, pratique, de croisière) et le temps de montée d'un avion à hélice ou à réaction.</td>
+	</tr>
+	<tr>
 		<td><b>OPENVSP.PAS</b></td>
 		<td>Cette commande permet de lancer un clone d'OpenVSP, un modeleur paramétrique de géométrie d'avions (ailes, fuselages, pods, hélices, conduits) avec vue 3D, analyses (géométrie calculée, masse et centrage, traînée parasite, aérodynamique) et exports STL/OBJ/CSV. Sous Turbo Pascal 7, la version allégée (LITE) est compilée en raison de la limite de 64 Ko de code.</td>
 	</tr>
@@ -117,6 +121,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 	<tr>
 		<td><b>VENT.PAS</b></td>
 		<td>Cette commande permet de résoudre le triangle des vents (cap à tenir, dérive, vitesse sol, vent mesuré, composantes du vent sur les pistes).</td>
+	</tr>
+	<tr>
+		<td><b>VITESSES.PAS</b></td>
+		<td>Cette commande permet de convertir les vitesses aéronautiques IAS, CAS, EAS, TAS et Mach (avec température statique ou totale), de calculer l'altitude de croisement CAS/Mach, un tableau des vitesses selon l'altitude et les unités de vitesse.</td>
 	</tr>
 </table>
 
