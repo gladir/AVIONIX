@@ -27,6 +27,14 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<th>Description</th>
 	</tr>
 	<tr>
+		<td><b>ATMOSPH.PAS</b></td>
+		<td>Cette commande permet de calculer l'atmosphère standard (température, pression, densité, vitesse du son), les altitudes-pression et -densité, la conversion des vitesses IAS, CAS, EAS, TAS et Mach, ainsi que le calage altimétrique (QNH, QFE).</td>
+	</tr>
+	<tr>
+		<td><b>ATTERRI.PAS</b></td>
+		<td>Cette commande permet de calculer la distance d'atterrissage d'un avion (phase aérienne, roulage libre et freiné, vent, pente, état de piste, marge de sécurité).</td>
+	</tr>
+	<tr>
 		<td><b>CAS.PAS</b></td>
 		<td>Cette commande permet de calculer la vitesse anémométrique corrigée (Calibrate Airspeed).</td>
 	</tr>
