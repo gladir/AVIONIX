@@ -194,7 +194,11 @@ Const
  W_TORNADO = 116;
  W_WXCHG = 117;
  C_TORNADO = 118;
- NB_MSG = 118;
+ P_TAKEOFF = 119;
+ W_TOAUTO = 120;
+ W_TOMAN = 121;
+ W_TONO = 122;
+ NB_MSG = 122;
 
 Const
  Msgs : Array[1..NB_MSG] Of Array[0..9] Of String[58] = (
@@ -1377,7 +1381,47 @@ Const
    'Destru~2do pelo tornado',
    'F~Orst~Ord av tornadon',
    '~Zdelagt af tornadoen',
-   'Tatsumaki de hakai sareta')
+   'Tatsumaki de hakai sareta'),
+  ('D~ecollage automatique',
+   'Automatic takeoff',
+   'Automatischer Start',
+   'Despegue autom~1tico',
+   'Decollo automatico',
+   'Ngritje automatike',
+   'Descolagem autom~1tica',
+   'Automatisk start',
+   'Automatisk start',
+   'Jidou ririku'),
+  ('PILOTE AUTO : DECOLLAGE',
+   'AUTOPILOT : TAKEOFF',
+   'AUTOPILOT : START',
+   'PILOTO AUT. : DESPEGUE',
+   'PILOTA AUT. : DECOLLO',
+   'PILOTI AUT. : NGRITJE',
+   'PILOTO AUT. : DESCOLAGEM',
+   'AUTOPILOT : START',
+   'AUTOPILOT : START',
+   'JIDOU SOUJUU : RIRIKU'),
+  ('PILOTAGE MANUEL',
+   'MANUAL CONTROL',
+   'MANUELLE STEUERUNG',
+   'CONTROL MANUAL',
+   'CONTROLLO MANUALE',
+   'KONTROLL MANUAL',
+   'CONTROLO MANUAL',
+   'MANUELL STYRNING',
+   'MANUEL STYRING',
+   'MANYUARU SOUJUU'),
+  ('D~ecollage auto : avion au sol requis',
+   'Auto takeoff : aircraft must be on the ground',
+   'Autostart : Flugzeug muss am Boden sein',
+   'Despegue auto : avi~3n en tierra requerido',
+   'Decollo auto : aereo a terra richiesto',
+   'Ngritje aut. : avioni duhet t~k jet~k n~k tok~k',
+   'Descolagem auto : aviao tem de estar no solo',
+   'Autostart : planet m~wste st~w p~w marken',
+   'Autostart : flyet skal v~yre p~w jorden',
+   'Jidou ririku : jimen ni iru toki nomi')
  );
 
 Type
@@ -1520,6 +1564,13 @@ Type
   Spec       : Integer;
   FlightT    : Real;
   TowDone    : Boolean;
+  ATO        : Integer;    { decollage auto : 0 non, 1 roulage, 2 rotation,
+                             3 montee }
+  ATOHdg     : Real;       { cap de la piste, degres }
+  ATOAlt     : Real;       { altitude a atteindre }
+  ATOT       : Real;       { duree du decollage }
+  ATOW       : Real;       { delai de rentree des volets }
+  ATOEnd     : Real;       { duree du message "pilotage manuel" }
  End;
 
 Var
@@ -3976,7 +4027,6 @@ Begin
   F.Thr:=Clamp(F.Thr+0.01*(F.APSpd-V)*Dt,0.0,1.0);
  End;
 End;
-
 { ------------------------------------------------------------------ }
 { Meteo : ensoleille, nuageux, pluie, orage, tornade, aleatoire      }
 { ------------------------------------------------------------------ }
@@ -4319,6 +4369,179 @@ Begin
  TouchedDown:=False;
  StopShown:=False;
 End;
+
+{ ------------------------------------------------------------------ }
+{ Decollage automatique                                              }
+{ ------------------------------------------------------------------ }
+
+Const
+ ATO_OFF   = 0;
+ ATO_ROLL  = 1;
+ ATO_ROT   = 2;
+ ATO_CLIMB = 3;
+ ATO_AGL   = 250.0;     { hauteur de fin du decollage, m }
+ ATO_HELI  = 45.0;
+ ATO_HUMAN = 8.0;
+
+{ Vitesse de decrochage avec les volets et la masse courants }
+Function StallSpeed(Const F:TFlt;Const Sp:TSpec):Real;
+Var
+ FlapF,Cmax:Real;
+Begin
+ FlapF:=0.0;
+ If Sp.HasFlaps Then FlapF:=F.Flaps/3.0;
+ Cmax:=Sp.CLmax+(Sp.CLmaxF-Sp.CLmax)*FlapF;
+ StallSpeed:=Sqrt(2.0*(Sp.Empty+F.Fuel)*G0/(1.225*Sp.S*Cmax));
+End;
+
+{ Fin du decollage automatique : le pilote reprend les commandes. Quand
+  le decollage est mene a son terme (Trim), l'avion est d'abord regle en
+  vol stabilise (manette et profondeur) pour ne pas lui laisser une
+  assiette de montee brutale }
+Procedure EndAutoTakeoff(Var F:TFlt;Trim:Boolean);
+Var
+ Sp:TSpec;
+ Va:TVec;
+ V,Gam,Thr0:Real;
+Begin
+ If F.ATO=ATO_OFF Then Exit;
+ Sp:=Specs[F.Spec];
+ If Trim and(Sp.Cat<>'C')and(Not F.OnGround)Then Begin
+  Va.X:=F.V.X-Wind.X; Va.Y:=F.V.Y-Wind.Y; Va.Z:=F.V.Z-Wind.Z;
+  V:=Sqrt(Va.X*Va.X+Va.Y*Va.Y+Va.Z*Va.Z);
+  Thr0:=F.Thr;
+  Gam:=0.03;
+  TrimFlight(F,V,Gam);
+  { le planeur reste remorque jusqu'au largage }
+  If Sp.Tow Then Begin F.Thr:=Thr0; F.Spool:=Thr0; End;
+ End;
+ F.ATO:=ATO_OFF;
+ F.AP:=False;
+ F.ATOEnd:=7.0;
+ SetMsg(Tr(W_TOMAN),LightGreen,5.0);
+End;
+
+{ Demarre le decollage automatique (avion au sol seulement) }
+Procedure StartAutoTakeoff(Var F:TFlt);
+Var
+ Sp:TSpec;
+Begin
+ Sp:=Specs[F.Spec];
+ If F.Crashed or(Not F.OnGround)or(F.ATO<>ATO_OFF)Then Begin
+  If F.ATO=ATO_OFF Then SetMsg(Tr(W_TONO),Yellow,4.0);
+  Exit;
+ End;
+ F.ATO:=ATO_ROLL;
+ F.ATOHdg:=HeadingDeg(F.F);
+ F.ATOAlt:=TerrainH(F.P.X,F.P.Y)+ATO_AGL;
+ If Sp.Cat='C' Then F.ATOAlt:=TerrainH(F.P.X,F.P.Y)+ATO_HELI;
+ { propulsion humaine : quelques metres au-dessus du sol suffisent }
+ If Sp.Cat='H' Then F.ATOAlt:=TerrainH(F.P.X,F.P.Y)+ATO_HUMAN;
+ F.ATOT:=0.0;
+ F.ATOW:=0.0;
+ F.ATOEnd:=0.0;
+ F.Brakes:=False;
+ F.Elev:=0.0; F.Ail:=0.0; F.Rud:=0.0;
+ SetMsg(Tr(W_TOAUTO),LightCyan,4.0);
+End;
+
+{ Un pas du decollage automatique : roulage, rotation a Vr, puis le pilote
+  automatique tient le cap et monte jusqu'a la hauteur de fin }
+Procedure UpdateAutoTakeoff(Var F:TFlt;Dt:Real);
+Var
+ Sp:TSpec;
+ Ps,Th,Ph,V,Vt,Ce,Vs,Vr,Qd,ThT,Hgt,Gam,Thov,Vzd:Real;
+Begin
+ If F.ATO=ATO_OFF Then Exit;
+ Sp:=Specs[F.Spec];
+ If F.Crashed Then Begin F.ATO:=ATO_OFF; Exit; End;
+ F.ATOT:=F.ATOT+Dt;
+ If(F.Fuel<=0.0)or(F.ATOT>420.0)Then Begin
+  EndAutoTakeoff(F,False);
+  Exit;
+ End;
+ AxesToEuler(F.F,F.R,F.U,Ps,Th,Ph);
+ Hgt:=F.P.Z-TerrainH(F.P.X,F.P.Y)-Sp.GearH;
+ F.Brakes:=False;
+
+ { helicoptere : montee verticale puis vol stationnaire }
+ If Sp.Cat='C' Then Begin
+  Thov:=Clamp((Sp.Empty+F.Fuel)*G0/(Sp.Tstat*
+         Exp(0.8*Ln(Density(F.P.Z)/1.225))),0.0,1.0);
+  Vzd:=Clamp(0.25*(F.ATOAlt-F.P.Z),-1.0,3.0);
+  F.Thr:=Clamp(Thov+0.12*(Vzd-F.V.Z),0.0,1.0);
+  F.Rud:=Clamp(2.0*WrapPi(F.ATOHdg*Pi/180.0-Ps),-1.0,1.0);
+  If F.P.Z>=F.ATOAlt-2.0 Then Begin
+   F.Thr:=Thov;
+   EndAutoTakeoff(F,True);
+  End;
+  Exit;
+ End;
+
+ V:=F.IAS;
+ Vt:=Sqrt(F.V.X*F.V.X+F.V.Y*F.V.Y+F.V.Z*F.V.Z);
+ If Vt<1.0 Then Vt:=1.0;
+ Vs:=StallSpeed(F,Sp);
+ Vr:=1.18*Vs;
+ Ce:=Clamp(V*V/(Sp.Vref*Sp.Vref),0.02,1.2);
+
+ Case F.ATO of
+  ATO_ROLL,ATO_ROT:Begin
+   F.Thr:=1.0;
+   If Sp.HasFlaps and(F.Flaps<1)Then F.Flaps:=1;
+   If(F.ATO=ATO_ROLL)and(V>=Vr)Then F.ATO:=ATO_ROT;
+   ThT:=0.0;
+   If F.ATO=ATO_ROT Then ThT:=MinR(0.15,0.85*Sp.TailAng);
+   Gam:=ArcSin(Clamp(F.V.Z/Vt,-1.0,1.0));
+   { assiette visee : on inverse l'equation de tangage de StepPhysics }
+   Qd:=1.6*(ThT-Th);
+   If F.OnGround Then Qd:=Qd+0.8*Th;
+   F.Elev:=Clamp((Qd/Ce-Sp.Ks*(Sp.AlphaTrim-F.Alpha-0.12*Gam))/Sp.Kq,
+                 -1.0,1.0);
+   If F.OnGround Then Begin
+    F.Rud:=Clamp(2.5*WrapPi(F.ATOHdg*Pi/180.0-Ps),-1.0,1.0);
+    F.Ail:=0.0;
+   End
+    Else Begin
+     F.Rud:=0.0;
+     F.Ail:=Clamp(-2.0*Ph/(Sp.PMax*Ce),-1.0,1.0);
+    End;
+   If(F.ATO=ATO_ROT)and(Not F.OnGround)and(Hgt>3.0)Then Begin
+    { en l'air : le pilote automatique prend la montee en charge }
+    F.ATO:=ATO_CLIMB;
+    F.AP:=True;
+    F.APHdg:=F.ATOHdg;
+    F.APAlt:=F.ATOAlt;
+    F.APSpd:=MaxR(1.4*Vs,Vt);
+   End;
+  End;
+  ATO_CLIMB:Begin
+   If F.OnGround Then Begin
+    F.ATO:=ATO_ROT;
+    F.AP:=False;
+   End
+    Else Begin
+     If Sp.Retract and F.GearDn and(Hgt>12.0)and(F.V.Z>1.0)Then
+      F.GearDn:=False;
+     If(Hgt>80.0)and(F.Flaps>0)Then Begin
+      F.ATOW:=F.ATOW-Dt;
+      If F.ATOW<=0.0 Then Begin
+       Dec(F.Flaps);
+       F.ATOW:=1.5;
+      End;
+     End;
+     If Sp.Cat='H' Then Begin
+      { propulsion humaine : quelques secondes en vol suffisent }
+      F.ATOW:=F.ATOW+Dt;
+      If(F.ATOW>6.0)or(F.P.Z>=F.ATOAlt-1.0)Then EndAutoTakeoff(F,True);
+     End
+      Else
+     If F.P.Z>=F.ATOAlt-10.0 Then EndAutoTakeoff(F,True);
+    End;
+  End;
+ End;
+End;
+
 
 { ------------------------------------------------------------------ }
 { Meteo : couleurs du ciel, brume                                    }
@@ -7213,7 +7436,8 @@ Begin
  Fl_:=Odd(FrameNo div 6);
  Key:=Ord(F.GearDn)+2*Ord(F.GearPos>0.99)+4*F.Flaps+16*Ord(F.Brakes)+
       32*Ord(F.AP)+64*Ord(F.Assist)+128*Ord(Fl_)+256*Id+
-      100000*Ord(F.Spool>0.85)+200000*Ord(F.Thr>0.0);
+      100000*Ord(F.Spool>0.85)+200000*Ord(F.Thr>0.0)+
+      400000*Ord(F.ATO>0)+800000*Ord(F.ATOEnd>0.0);
  If F.GearPos>0.01 Then Key:=Key+1000*Ord(F.GearPos<0.99);
  If InstChanged(6,Key)Then Begin
  
@@ -7233,7 +7457,14 @@ Begin
   If Sp.Tow Then Lamp(296,449,52,Tr(L_TOW),F.Thr>0.0,Yellow);
   If Id<>0 Then Begin
    If Fl_ or(Id<>W_STALL)Then PutText(360,449,Tr(Id),LightRed);
-  End;
+  End
+   Else
+  { decollage automatique : message clignotant, puis retour manuel }
+  If F.ATO>0 Then
+   Lamp(360,449,Length(Tr(W_TOAUTO))*8+12,Tr(W_TOAUTO),Fl_,LightCyan)
+  Else
+  If F.ATOEnd>0.0 Then
+   Lamp(360,449,Length(Tr(W_TOMAN))*8+12,Tr(W_TOMAN),Fl_,LightGreen);
  End;
  ComputeNav(F,DestAp,Dst,Brg,Loc,Gs,Ils);
  S:=Tr(L_DEST)+' '+Aps[DestAp].Code+'  '+Tr(L_DIST)+' '+
@@ -7998,8 +8229,13 @@ Begin
  End;
 End;
 
-{ Menu pause : 0 reprendre, 1 menu principal, 2 quitter }
+{ Menu pause : 0 reprendre, 1 menu principal, 2 quitter, 3 decollage
+  automatique (affiches dans l'ordre : reprendre, decollage auto, menu,
+  quitter) }
 Function PauseMenu:Integer;
+Const
+ NR = 4;
+ Res : Array[0..NR-1] Of Integer = (0,3,1,2);
 Var
  Row,I:Integer;
  Ch:Char;
@@ -8013,38 +8249,37 @@ Begin
  CtxMenu;
  While Not Done do Begin
   SetFillStyle(SolidFill,Blue);
-  Bar(150,110,490,230);
+  Bar(100,100,540,254);
   SetColor(Yellow);
-  Rectangle(152,112,488,228);
+  Rectangle(102,102,538,252);
   SetTextStyle(DefaultFont,HorizDir,2);
-  For I:=0 to 2 do Begin
+  For I:=0 to NR-1 do Begin
    Case I of
     0:S:=Tr(P_RESUME);
-    1:S:=Tr(P_MENU);
+    1:S:=Tr(P_TAKEOFF);
+    2:S:=Tr(P_MENU);
     Else S:=Tr(M_QUIT);
    End;
    If I=Row Then Begin
     SetFillStyle(SolidFill,LightBlue);
-    Bar(160,128+I*32,480,128+I*32+22);
+    Bar(110,118+I*32,530,118+I*32+22);
     SetColor(White);
    End
     Else SetColor(LightGray);
-   OutTextXY(320-Length(S)*8,131+I*32,S);
+   OutTextXY(320-Length(S)*8,121+I*32,S);
   End;
   SetTextStyle(DefaultFont,HorizDir,1);
   Ch:=ReadKey;
   If Ch=#0 Then Begin
    Ch:=ReadKey;
-   If Ord(Ch)=72 Then Row:=(Row+2)mod 3
-   Else If Ord(Ch)=80 Then Row:=(Row+1)mod 3;
+   If Ord(Ch)=72 Then Row:=(Row+NR-1)mod NR
+   Else If Ord(Ch)=80 Then Row:=(Row+1)mod NR;
   End
    Else
   Case Ch of
-   #13:Begin PauseMenu:=Row; Done:=True; End;
+   #13:Begin PauseMenu:=Res[Row]; Done:=True; End;
    #27:Begin PauseMenu:=0; Done:=True; End;
-   '1':Begin PauseMenu:=0; Done:=True; End;
-   '2':Begin PauseMenu:=1; Done:=True; End;
-   '3':Begin PauseMenu:=2; Done:=True; End;
+   '1'..'4':Begin PauseMenu:=Res[Ord(Ch)-49]; Done:=True; End;
   End;
  End;
 End;
@@ -8082,6 +8317,9 @@ Begin
   Ch:=ReadKey;
   If Ch=#0 Then Begin
    Ch:=ReadKey;
+   { une commande de vol rend les commandes au pilote }
+   If(F.ATO<>0)and(Ord(Ch)in[71,72,73,75,77,79,80,81])Then
+    EndAutoTakeoff(F,False);
    Case Ord(Ch) of
     72:If F.AP Then F.APAlt:=F.APAlt+30.48
        Else F.Elev:=Clamp(F.Elev-0.06,-1.0,1.0);
@@ -8105,10 +8343,14 @@ Begin
    End;
   End
    Else
+  Begin
+  If(F.ATO<>0)and(UpCase(Ch)in['+','=','-','_','Z',',','X','.',' ','B',
+     'F','D','G'])Then EndAutoTakeoff(F,False);
   Case UpCase(Ch) of
    #27:Begin
         R:=PauseMenu;
         DrawPanelBackground;
+        If R=3 Then StartAutoTakeoff(F) Else
         If R<>0 Then Res:=R;
        End;
    '+','=':If F.AP Then F.APSpd:=F.APSpd+2.5
@@ -8136,11 +8378,12 @@ Begin
    '[':MapZoom:=Clamp(MapZoom*0.7,20.0,1000.0);
    ']':MapZoom:=Clamp(MapZoom/0.7,20.0,1000.0);
    #9:DestAp:=(DestAp+1)mod NB_AIRPORT;
-   'A':ToggleAP(F);
+   'A':If F.ATO<>0 Then EndAutoTakeoff(F,False) Else ToggleAP(F);
    'S':F.Assist:=Not F.Assist;
    'N':Night:=Not Night;
    'R':Begin SetupFlight(F); DrawPanelBackground; End;
    'H','?':Begin ShowHelp; DrawPanelBackground; End;
+  End;
   End;
  End;
  HandleKeys:=Res;
@@ -8184,11 +8427,13 @@ Begin
   If Res<>0 Then Break;
   If Not Paused Then Begin
    UpdateWeather(Fl,Dt);
+   If Fl.ATO<>0 Then UpdateAutoTakeoff(Fl,Dt);
    If Fl.AP Then UpdateAutopilot(Fl,Dt);
+   If Fl.ATOEnd>0.0 Then Fl.ATOEnd:=Fl.ATOEnd-Dt;
    N:=Trunc(Dt/0.025)+1;
    Sub:=Dt/N;
    For I:=1 to N do StepPhysics(Fl,Sub);
-   If Not Fl.AP Then Begin
+   If(Not Fl.AP)and(Fl.ATO=0)Then Begin
     Fl.Ail:=Fl.Ail*Exp(-2.5*Dt);
     Fl.Rud:=Fl.Rud*Exp(-2.5*Dt);
    End;
