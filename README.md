@@ -15,6 +15,8 @@ Voici un aperçu de FLIGHT.PAS (Simulateur de vol) :
 
 <img width="643" height="477" alt="image" src="https://github.com/user-attachments/assets/66e0aa7e-3d11-4391-aa70-e304b47236bf" />
 
+<img width="645" height="482" alt="image" src="https://github.com/user-attachments/assets/6bea64b1-062e-430d-8032-c609b55c4f1c" />
+
 <h3>Liste des fichiers</h3>
 
 Voici la liste des différents fichiers proposés dans l'aviation :
