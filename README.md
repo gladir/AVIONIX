@@ -36,7 +36,7 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 	</tr>
 	<tr>
 		<td><b>FLIGHT.PAS</b></td>
-		<td>Cette commande permet de lancer un clone de Flight Simulator, un simulateur de vol en mode graphique avec vue 3D (cockpit, externe, tour de contr&ocirc;le et carte), instruments de bord, relief, villes, a&eacute;roports, nuages, vent, vol de nuit, ILS, pilote automatique et quatre avions (Cessna 172, Pitts S-2B, Learjet 45 et Boeing 737-800). La langue est choisie avec la variable d'environnement <code>LANGUAGE</code> (fran&ccedil;ais par d&eacute;faut, <code>EN</code>, <code>GR</code>, <code>SP</code> ou <code>IT</code>).</td>
+		<td>Cette commande permet de lancer un clone de Flight Simulator, un simulateur de vol en mode graphique avec vue 3D (cockpit, externe, tour de contr&ocirc;le et carte), instruments de bord, relief, villes, a&eacute;roports, nuages, vent, vol de nuit, ILS, pilote automatique et tous les avions du r&eacute;pertoire <code>SAMPLES/FLIGHT</code> (une fiche <code>.FLT</code> par avion de <code>SAMPLES/OPENVSP</code>) &agrave; choisir dans la liste du menu. Les instruments (anémomètre, variomètre, moteurs, post-combustion, remorquage...) s'adaptent au type d'appareil. La langue est choisie avec la variable d'environnement <code>LANGUAGE</code> (fran&ccedil;ais par d&eacute;faut, <code>EN</code>, <code>GR</code>, <code>SP</code> ou <code>IT</code>).</td>
 	</tr>
 	<tr>
 		<td><b>ISA.PAS</b></td>
@@ -75,6 +75,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet d'effectuer la simulation de la trajectoire d'un avion.</td>
 	</tr>
 </table>
+
+<h2>Fiches d'avions de FLIGHT.PAS</h2>
+
+Le r&eacute;pertoire <code>SAMPLES/FLIGHT</code> contient une fiche de vol (<code>.FLT</code>) pour chacun des avions de <code>SAMPLES/OPENVSP</code> (m&ecirc;me nom de fichier : <code>C172.VSP</code> donne <code>C172.FLT</code>). Chaque fiche est un fichier texte de lignes <code>CLE=VALEUR</code> (masse, surface alaire, motorisation, trains, volets, vitesses limites, gouvernes, dimensions du mod&egrave;le 3D, etc.) qu'il est possible de modifier ou d'ajouter : <code>FLIGHT.PAS</code> en cherche la liste au d&eacute;marrage (dans <code>SAMPLES/FLIGHT</code> ou <code>../SAMPLES/FLIGHT</code>) et, si le r&eacute;pertoire est absent, utilise quatre avions int&eacute;gr&eacute;s.
 
 <h2>Compilation</h2>
 	

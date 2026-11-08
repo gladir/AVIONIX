@@ -42,7 +42,9 @@ Const
  NMILE       = 1852.0;        { metres dans un mille nautique }
 
  NB_AIRPORT  = 4;
- NB_PLANE    = 4;
+ NB_PLANE    = 4;           { avions integres (si SAMPLES/FLIGHT absent) }
+ SLOT_CUR    = 4;           { emplacement de l'avion charge }
+ MAX_AC      = 240;
  MAX_MTN     = 10;
  MAX_BLD     = 128;
  MAX_CLD     = 30;
@@ -148,7 +150,30 @@ Const
  H_ANY = 83;
  P_RESUME = 84;
  P_MENU = 85;
- NB_MSG = 85;
+ L_AB = 86;
+ L_STAM = 87;
+ L_TOW = 88;
+ W_TOWREL = 89;
+ T_WATER = 90;
+ C_HULL = 91;
+ K_P = 92;
+ K_T = 93;
+ K_J = 94;
+ K_A = 95;
+ K_R = 96;
+ K_U = 97;
+ K_G = 98;
+ K_H = 99;
+ K_C = 100;
+ D_ENG = 101;
+ D_VMAX = 102;
+ D_MASS = 103;
+ D_SPAN = 104;
+ D_LEN = 105;
+ D_YEAR = 106;
+ D_SELHINT = 107;
+ M_ACLIST = 108;
+ NB_MSG = 108;
 
 Const
  Msgs : Array[1..NB_MSG] Of Array[0..4] Of String[58] = (
@@ -576,7 +601,122 @@ Const
    'Main menu',
    'Hauptmen~U',
    'Men~4 principal',
-   'Menu principale')
+   'Menu principale'),
+  ('PC',
+   'A/B',
+   'NB',
+   'PC',
+   'PC'),
+  ('ENDU',
+   'STAM',
+   'AUSD',
+   'ENDU',
+   'ENDU'),
+  ('REMORQ',
+   'TOW',
+   'SCHLEP',
+   'REMOLQ',
+   'TRAINO'),
+  ('REMORQUEUR LARGU~E',
+   'TOW RELEASED',
+   'SCHLEPP GEL~PST',
+   'REMOLCADOR SUELTO',
+   'TRAINO RILASCIATO'),
+  ('sur l''eau',
+   'on water',
+   'auf dem Wasser',
+   'en el agua',
+   'sull''acqua'),
+  ('Hydravion sur terre : glissade sur la coque',
+   'Flying boat on land : sliding on the hull',
+   'Flugboot an Land : Rutschen auf dem Rumpf',
+   'Hidroavi~3n en tierra : deslizando sobre el casco',
+   'Idrovolante a terra : scivola sullo scafo'),
+  ('Moteur ~a pistons',
+   'Piston engine',
+   'Kolbenmotor',
+   'Motor de pistones',
+   'Motore a pistoni'),
+  ('Turbopropulseur',
+   'Turboprop',
+   'Turboprop',
+   'Turboh~elice',
+   'Turboelica'),
+  ('R~eacteur',
+   'Jet engine',
+   'Strahltriebwerk',
+   'Reactor',
+   'Reattore'),
+  ('R~eacteur ~a postcombustion',
+   'Afterburning jet',
+   'Triebwerk mit Nachbrenner',
+   'Reactor con poscombusti~3n',
+   'Reattore con postbruciatore'),
+  ('Moteur-fus~ee',
+   'Rocket engine',
+   'Raketenantrieb',
+   'Motor cohete',
+   'Motore a razzo'),
+  ('Pulsor~eacteur',
+   'Pulsejet',
+   'Pulsstrahltriebwerk',
+   'Pulsorreactor',
+   'Pulsoreattore'),
+  ('Planeur',
+   'Glider',
+   'Segelflugzeug',
+   'Planeador',
+   'Aliante'),
+  ('Propulsion humaine',
+   'Human powered',
+   'Muskelkraft',
+   'Propulsi~3n humana',
+   'Propulsione umana'),
+  ('H~elicopt~gre',
+   'Helicopter',
+   'Hubschrauber',
+   'Helic~3ptero',
+   'Elicottero'),
+  ('Moteurs',
+   'Engines',
+   'Triebwerke',
+   'Motores',
+   'Motori'),
+  ('Vitesse max.',
+   'Max speed',
+   'H~Ochstgeschw.',
+   'Veloc. m~1x.',
+   'Veloc. max.'),
+  ('Masse max.',
+   'Max weight',
+   'Max. Gewicht',
+   'Masa m~1x.',
+   'Massa max.'),
+  ('Envergure',
+   'Wingspan',
+   'Spannweite',
+   'Envergadura',
+   'Apertura'),
+  ('Longueur',
+   'Length',
+   'L~Ange',
+   'Longitud',
+   'Lunghezza'),
+  ('Ann~ee',
+   'Year',
+   'Jahr',
+   'A~no',
+   'Anno'),
+  ('Haut/Bas/PgUp/PgDn : choisir  Entr~ee : OK  Esc : sortir',
+   'Up/Down/PgUp/PgDn : select  Enter : OK  Esc : cancel',
+   'Auf/Ab/BildAuf/Ab : w~Ahlen  Enter : OK  Esc : Abbruch',
+   'Flechas/ReP~1g/AvP~1g : elegir  Intro : OK  Esc : salir',
+   'Su/Gi~v/PgSu/PgGi~v : scegli  Invio : OK  Esc : annulla'),
+  ('Entr~ee : liste des avions',
+   'Enter : aircraft list',
+   'Enter : Flugzeugliste',
+   'Intro : lista de aviones',
+   'Invio : elenco aerei')
  );
 
 Type
@@ -598,10 +738,25 @@ Type
  End;
 
  TSpec = Record
-  Name      : String[22];
+  Name      : String[40];
+  Id        : String[10];
+  Desc      : String[110];
+  Cat       : Char;      { P T J A R U G H C (voir LoadSpecFile) }
+  NEng      : Integer;   { nombre de moteurs }
+  Year      : Integer;
+  MTow      : Real;      { masse maximale, kg }
+  VMaxKmh   : Real;
   Jet       : Boolean;
   Retract   : Boolean;
   HasFlaps  : Boolean;
+  Float     : Boolean;   { hydravion ou ecranoplan }
+  Amph      : Boolean;   { amphibie }
+  Ab        : Boolean;   { post-combustion }
+  Tow       : Boolean;   { planeur remorque }
+  Delta     : Boolean;
+  HighWing  : Boolean;
+  Wings     : Integer;
+  Sweep     : Real;      { fleche, degres }
   Empty     : Real;      { masse a vide + charge utile, kg }
   FuelCap   : Real;      { capacite en carburant, kg }
   FuelFrac  : Real;      { fraction de carburant au depart }
@@ -616,10 +771,15 @@ Type
   CDFlap    : Real;
   CDGear    : Real;
   McritW    : Real;      { Mach critique (trainee d'onde) }
+  WaveK     : Real;      { amplitude de la trainee d'onde }
+  GroundFx  : Real;      { effet de sol }
+  CritAlt   : Real;      { altitude de rapidite du moteur, m }
   Pwr       : Real;      { puissance de l'helice, W }
   Tstat     : Real;      { poussee statique, N }
   SpoolT    : Real;      { temps de reponse du moteur, s }
   MachK     : Real;      { perte de poussee avec le Mach }
+  Boost     : Real;      { poussee d'aide au lancement, N }
+  BoostV    : Real;      { vitesse de fin de l'aide, m/s }
   PMax      : Real;      { taux de roulis maximal, rad/s }
   Kq, Ks    : Real;      { gain de profondeur, stabilite }
   Kw, Krud  : Real;      { girouette, gouverne de direction }
@@ -635,6 +795,7 @@ Type
   Vne       : Real;      { vitesse limite, m/s }
   VsMax     : Real;      { vitesse verticale max du pilote auto }
   VDial     : Integer;   { echelle de l'anemometre, noeuds }
+  VSScale   : Integer;   { echelle du variometre, ft/min }
   Len, Span : Real;      { dimensions du modele 3D }
   Col1, Col2: Integer;
  End;
@@ -696,13 +857,19 @@ Type
   Stalled    : Boolean;
   Spec       : Integer;
   FlightT    : Real;
+  TowDone    : Boolean;
  End;
 
 Var
  { Langue : 0=FR 1=EN 2=GR 3=SP 4=IT }
  Lang       : Integer;
 
- Specs      : Array[0..NB_PLANE-1] Of TSpec;
+ Specs      : Array[0..NB_PLANE] Of TSpec;   { +1 : avion charge }
+
+ { Liste des avions : fiches .FLT du repertoire SAMPLES/FLIGHT }
+ AcFile     : Array[0..MAX_AC-1] Of String[8];
+ NAc        : Integer;
+ AcDir      : String;
  Aps        : Array[0..NB_AIRPORT-1] Of TAirport;
  Mtns       : Array[0..MAX_MTN-1] Of TMtn;
  Blds       : Array[0..MAX_BLD-1] Of TBld;
@@ -1030,6 +1197,9 @@ Begin
 
  With Specs[0] Do Begin
   Name:='Cessna 172 Skyhawk';
+  Id:='C172'; Cat:='P'; NEng:=1; Wings:=1; HighWing:=True; Year:=1956;
+  MTow:=1100.0; VMaxKmh:=226.0; WaveK:=0.5; GroundFx:=0.12; VSScale:=2000;
+  Desc:='Avion de tourisme quadriplace (modele integre)';
   Jet:=False; Retract:=False; HasFlaps:=True;
   Empty:=830.0; FuelCap:=130.0; FuelFrac:=1.0; FuelFlow:=0.0075;
   S:=16.2; CD0:=0.031; K:=0.055; CLa:=4.8; Alpha0:=-0.05; NegK:=0.7;
@@ -1045,6 +1215,9 @@ Begin
 
  With Specs[1] Do Begin
   Name:='Pitts Special S-2B';
+  Id:='S2B'; Cat:='P'; NEng:=1; Wings:=2; Year:=1983;
+  MTow:=615.0; VMaxKmh:=250.0; WaveK:=0.5; GroundFx:=0.12; VSScale:=2000;
+  Desc:='Biplan acrobatique (modele integre)';
   Jet:=False; Retract:=False; HasFlaps:=False;
   Empty:=560.0; FuelCap:=55.0; FuelFrac:=1.0; FuelFlow:=0.011;
   S:=11.5; CD0:=0.045; K:=0.075; CLa:=4.3; Alpha0:=0.0; NegK:=1.0;
@@ -1060,6 +1233,9 @@ Begin
 
  With Specs[2] Do Begin
   Name:='Learjet 45';
+  Id:='LJ45'; Cat:='J'; NEng:=2; Wings:=1; Sweep:=13.0; Year:=1998;
+  MTow:=9300.0; VMaxKmh:=860.0; WaveK:=0.5; GroundFx:=0.12; VSScale:=2000;
+  Desc:='Avion d''affaires a reaction (modele integre)';
   Jet:=True; Retract:=True; HasFlaps:=True;
   Empty:=6500.0; FuelCap:=2400.0; FuelFrac:=0.7; FuelFlow:=0.6;
   S:=29.1; CD0:=0.022; K:=0.05; CLa:=4.8; Alpha0:=-0.04; NegK:=0.6;
@@ -1075,6 +1251,9 @@ Begin
 
  With Specs[3] Do Begin
   Name:='Boeing 737-800';
+  Id:='B738'; Cat:='J'; NEng:=2; Wings:=1; Sweep:=25.0; Year:=1998;
+  MTow:=79000.0; VMaxKmh:=870.0; WaveK:=0.5; GroundFx:=0.12; VSScale:=2000;
+  Desc:='Avion de ligne bireacteur (modele integre)';
   Jet:=True; Retract:=True; HasFlaps:=True;
   Empty:=52000.0; FuelCap:=20000.0; FuelFrac:=0.5; FuelFlow:=1.4;
   S:=125.0; CD0:=0.024; K:=0.04; CLa:=5.2; Alpha0:=-0.04; NegK:=0.6;
@@ -1087,6 +1266,214 @@ Begin
   Vne:=180.0; VsMax:=13.0; VDial:=400;
   Len:=39.5; Span:=35.8; Col1:=White; Col2:=LightBlue;
  End;
+End;
+
+{ ------------------------------------------------------------------ }
+{ Fiches d'avions : SAMPLES/FLIGHT/*.FLT                             }
+{ ------------------------------------------------------------------ }
+
+Function ValR(Const S:String):Real;
+Var
+ R:Real;
+ E:Integer;
+Begin
+ Val(S,R,E);
+ If E<>0 Then R:=0.0;
+ ValR:=R;
+End;
+
+{ Affecte une cle NOM=VALEUR d'une fiche a la description de l'avion }
+Procedure ApplyKey(Var Sp:TSpec;Const K,V:String);
+Var
+ R:Real;
+ N:Integer;
+Begin
+ R:=ValR(V);
+ N:=Round(R);
+ If K='NAME' Then Sp.Name:=Copy(V,1,40) Else
+ If K='DESC' Then Sp.Desc:=Copy(V,1,110) Else
+ If K='MODEL' Then Sp.Id:=Copy(V,1,10) Else
+ If K='CAT' Then Begin If V<>'' Then Sp.Cat:=V[1]; End Else
+ If K='ENGINES' Then Sp.NEng:=N Else
+ If K='YEAR' Then Sp.Year:=N Else
+ If K='MTOW' Then Sp.MTow:=R Else
+ If K='VMAXKMH' Then Sp.VMaxKmh:=R Else
+ If K='RETRACT' Then Sp.Retract:=(N<>0) Else
+ If K='FLAPS' Then Sp.HasFlaps:=(N<>0) Else
+ If K='FLOAT' Then Sp.Float:=(N<>0) Else
+ If K='AMPH' Then Sp.Amph:=(N<>0) Else
+ If K='WINGS' Then Sp.Wings:=N Else
+ If K='SWEEP' Then Sp.Sweep:=R Else
+ If K='DELTA' Then Sp.Delta:=(N<>0) Else
+ If K='HIGHWING' Then Sp.HighWing:=(N<>0) Else
+ If K='LEN' Then Sp.Len:=R Else
+ If K='SPAN' Then Sp.Span:=R Else
+ If K='S' Then Sp.S:=R Else
+ If K='EMPTY' Then Sp.Empty:=R Else
+ If K='FUELCAP' Then Sp.FuelCap:=R Else
+ If K='FUELFRAC' Then Sp.FuelFrac:=R Else
+ If K='FUELFLOW' Then Sp.FuelFlow:=R Else
+ If K='CD0' Then Sp.CD0:=R Else
+ If K='K' Then Sp.K:=R Else
+ If K='CLA' Then Sp.CLa:=R Else
+ If K='ALPHA0' Then Sp.Alpha0:=R Else
+ If K='NEGK' Then Sp.NegK:=R Else
+ If K='CLMAX' Then Sp.CLmax:=R Else
+ If K='CLMAXF' Then Sp.CLmaxF:=R Else
+ If K='CDFLAP' Then Sp.CDFlap:=R Else
+ If K='CDGEAR' Then Sp.CDGear:=R Else
+ If K='MCRIT' Then Sp.McritW:=R Else
+ If K='WAVEK' Then Sp.WaveK:=R Else
+ If K='GEFX' Then Sp.GroundFx:=R Else
+ If K='PWR' Then Sp.Pwr:=R Else
+ If K='TSTAT' Then Sp.Tstat:=R Else
+ If K='SPOOLT' Then Sp.SpoolT:=R Else
+ If K='MACHK' Then Sp.MachK:=R Else
+ If K='AB' Then Sp.Ab:=(N<>0) Else
+ If K='CRITALT' Then Sp.CritAlt:=R Else
+ If K='BOOST' Then Sp.Boost:=R Else
+ If K='BOOSTV' Then Sp.BoostV:=R Else
+ If K='TOW' Then Sp.Tow:=(N<>0) Else
+ If K='PMAX' Then Sp.PMax:=R Else
+ If K='KQ' Then Sp.Kq:=R Else
+ If K='KS' Then Sp.Ks:=R Else
+ If K='KW' Then Sp.Kw:=R Else
+ If K='KRUD' Then Sp.Krud:=R Else
+ If K='ATRIM' Then Sp.AlphaTrim:=R Else
+ If K='VREF' Then Sp.Vref:=R Else
+ If K='NLIM' Then Sp.NLim:=R Else
+ If K='CRASHVS' Then Sp.CrashVS:=R Else
+ If K='MAXBANK' Then Sp.MaxBank:=R Else
+ If K='TAILANG' Then Sp.TailAng:=R Else
+ If K='BRAKEMU' Then Sp.BrakeMu:=R Else
+ If K='GEARH' Then Sp.GearH:=R Else
+ If K='EYEF' Then Sp.EyeF:=R Else
+ If K='EYEU' Then Sp.EyeU:=R Else
+ If K='VNE' Then Sp.Vne:=R Else
+ If K='VSMAX' Then Sp.VsMax:=R Else
+ If K='VDIAL' Then Sp.VDial:=N Else
+ If K='VSSCALE' Then Sp.VSScale:=N Else
+ If K='COL1' Then Sp.Col1:=N Else
+ If K='COL2' Then Sp.Col2:=N;
+End;
+
+{ Lit une fiche .FLT ; retourne False si le fichier est introuvable }
+Function LoadSpecFile(Const Id:String;Var Sp:TSpec):Boolean;
+Var
+ T:Text;
+ L,K,V:String;
+ P:Integer;
+Begin
+ LoadSpecFile:=False;
+ FillChar(Sp,SizeOf(Sp),0);
+ Sp.Id:=Id;
+ Sp.Cat:='P';
+ Sp.Wings:=1;
+ Sp.NEng:=1;
+ Sp.WaveK:=0.5;
+ Sp.VSScale:=2000;
+ Assign(T,AcDir+Id+'.FLT');
+ {$I-}
+ Reset(T);
+ {$I+}
+ If IOResult<>0 Then Exit;
+ While Not Eof(T) do Begin
+  ReadLn(T,L);
+  P:=Pos('=',L);
+  If(P>1)and(L[1]<>'#')Then Begin
+   K:=Copy(L,1,P-1);
+   V:=Copy(L,P+1,Length(L)-P);
+   While(Length(V)>0)and(V[Length(V)]<=' ')do Dec(V[0]);
+   ApplyKey(Sp,K,V);
+  End;
+ End;
+ Close(T);
+ Sp.Jet:=Sp.Cat in['J','A','R','U'];
+ If Sp.SpoolT<0.1 Then Sp.SpoolT:=0.5;
+ If Sp.S<1.0 Then Sp.S:=1.0;
+ If Sp.Vref<1.0 Then Sp.Vref:=1.0;
+ LoadSpecFile:=True;
+End;
+
+Procedure SortAc(N:Integer);
+Var
+ I,J:Integer;
+ T:String[8];
+Begin
+ For I:=1 to N-1 do Begin
+  T:=AcFile[I];
+  J:=I-1;
+  While(J>=0)and(AcFile[J]>T)do Begin
+   AcFile[J+1]:=AcFile[J];
+   Dec(J);
+  End;
+  AcFile[J+1]:=T;
+ End;
+End;
+
+{ Cherche les fiches dans un repertoire ; retourne le nombre trouve }
+Function ScanDir(Const Dir:String):Integer;
+Var
+ SR:SearchRec;
+ N,P:Integer;
+ S:String;
+Begin
+ N:=0;
+ FindFirst(Dir+'*.FLT',AnyFile,SR);
+ While(DosError=0)and(N<MAX_AC)do Begin
+  S:=SR.Name;
+  P:=Pos('.',S);
+  If P>1 Then Begin
+   AcFile[N]:=UpStr(Copy(S,1,P-1));
+   Inc(N);
+  End;
+  FindNext(SR);
+ End;
+ {$IFDEF FPC}
+  FindClose(SR);
+ {$ENDIF}
+ ScanDir:=N;
+End;
+
+{ Construit la liste des avions : SAMPLES/FLIGHT, sinon avions integres }
+Procedure ScanAircraft;
+Var
+ D:DirStr;
+ Nm:NameStr;
+ Ex:ExtStr;
+ Base:String;
+ I,N:Integer;
+Begin
+ FSplit(ParamStr(0),D,Nm,Ex);
+ N:=0;
+ For I:=0 to 3 do Begin
+  Case I of
+   0:Base:='SAMPLES/FLIGHT/';
+   1:Base:='../SAMPLES/FLIGHT/';
+   2:Base:=D+'SAMPLES/FLIGHT/';
+   Else Base:=D+'../SAMPLES/FLIGHT/';
+  End;
+  If N=0 Then Begin
+   N:=ScanDir(Base);
+   If N>0 Then AcDir:=Base;
+  End;
+ End;
+ If N=0 Then Begin
+  For I:=0 to NB_PLANE-1 do AcFile[I]:='*'+Chr(48+I);
+  N:=NB_PLANE;
+  AcDir:='';
+ End
+  Else SortAc(N);
+ NAc:=N;
+End;
+
+{ Charge l'avion numero I de la liste dans l'emplacement SLOT_CUR }
+Procedure LoadAircraft(I:Integer);
+Begin
+ If(I<0)or(I>=NAc)Then I:=0;
+ If AcFile[I][1]='*' Then Specs[SLOT_CUR]:=Specs[Ord(AcFile[I][2])-48]
+ Else If Not LoadSpecFile(AcFile[I],Specs[SLOT_CUR])Then
+  Specs[SLOT_CUR]:=Specs[0];
 End;
 
 { ------------------------------------------------------------------ }
@@ -1269,8 +1656,8 @@ Var
  A,E:Real;
 Begin
  RandSeed:=4242;
- SetAirport(0,'Gladir Intl','GLAD',0.0,0.0,True,3000.0,45.0);
- SetAirport(1,'Mont-Blanc','MBLC',30000.0,40000.0,False,2400.0,45.0);
+ SetAirport(0,'Gladir Intl','GLAD',0.0,0.0,True,4000.0,45.0);
+ SetAirport(1,'Mont-Blanc','MBLC',30000.0,40000.0,False,3200.0,45.0);
  SetAirport(2,'Port-Neuf','PNEF',-40000.0,25000.0,True,1800.0,30.0);
  SetAirport(3,'Val-Vert','VVRT',15000.0,-45000.0,False,1200.0,25.0);
 
@@ -1285,7 +1672,7 @@ Begin
  SetMtn(8,-70000.0,50000.0,9000.0,2500.0);
  SetMtn(9,5000.0,-60000.0,8000.0,2300.0);
 
- SetLake(0,12000.0,8000.0,3500.0,2200.0);
+ SetLake(0,13000.0,9000.0,6500.0,2500.0);
  SetLake(1,-30000.0,5000.0,5000.0,3000.0);
  SetLake(2,40000.0,-20000.0,6000.0,3500.0);
 
@@ -1376,25 +1763,41 @@ Begin
   Else
  CL:=Lin;
  CD:=Sp.CD0+Sp.K*CL*CL+Sp.CDFlap*FlapF+Sp.CDGear*GearF;
- If Mach>Sp.McritW Then CD:=CD+8.0*Sqr(Mach-Sp.McritW);
+ If Mach>Sp.McritW Then Begin
+  If Mach<1.05 Then
+   CD:=CD+Sp.WaveK*Sqr(Clamp((Mach-Sp.McritW)/(1.05-Sp.McritW),0.0,1.0))
+  Else
+   CD:=CD+Sp.WaveK*(1.0-0.6*Clamp((Mach-1.05)/0.8,0.0,1.0));
+ End;
  CD:=CD+Blend*1.3*Sqr(Sin(A));
 End;
 
 Function ThrustFun(Const Sp:TSpec;Spool,V,Rho,Mach:Real):Real;
 Var
- Sig,T,Pa:Real;
+ Sig,SigC,T,Pa,Core,ABf:Real;
 Begin
  Sig:=Rho/1.225;
- If Sp.Jet Then Begin
-  T:=Sp.Tstat*(0.03+0.97*Spool)*Exp(0.7*Ln(Sig))*
-     MaxR(0.2,1.0-Sp.MachK*Mach);
- End
-  Else
- Begin
-  Pa:=Sp.Pwr*Spool*Sig;
-  T:=MinR(Sp.Tstat*Spool*Sig,0.8*Pa/MaxR(V,1.0));
-  T:=T-0.08*Sp.Tstat*(1.0-Spool)*MinR(V/50.0,1.0);
+ SigC:=1.0;
+ If Sp.CritAlt>0.0 Then SigC:=Density(Sp.CritAlt)/1.225;
+ Case Sp.Cat of
+  'J','A','U':Begin
+     If Sp.Ab Then Begin
+      ABf:=Clamp((Spool-0.85)/0.15,0.0,1.0);
+      Core:=MinR(Spool,0.85)/0.85;
+      T:=Sp.Tstat*(0.62*(0.03+0.97*Core)+0.38*ABf);
+     End
+      Else T:=Sp.Tstat*(0.03+0.97*Spool);
+     T:=T*Exp(0.7*Ln(Sig))*Clamp(1.0-Sp.MachK*Mach,0.2,1.8);
+    End;
+  'R','G':T:=Sp.Tstat*Spool;
+  'C':T:=Sp.Tstat*Spool*Exp(0.8*Ln(Sig));
+  Else Begin
+     Pa:=Sp.Pwr*Spool*MinR(1.0,Sig/SigC);
+     T:=MinR(Sp.Tstat*Spool*MinR(1.0,Sig/SigC),0.8*Pa/MaxR(V,1.0));
+     T:=T-0.08*Sp.Tstat*(1.0-Spool)*MinR(V/50.0,1.0);
+    End;
  End;
+ If(Sp.Boost>0.0)and(Spool>0.9)and(V<Sp.BoostV)Then T:=T+Sp.Boost;
  ThrustFun:=T;
 End;
 
@@ -1418,7 +1821,7 @@ Begin
 End;
 
 { Compte rendu de la pose }
-Procedure TouchdownReport(Sink:Real;Const Sp:TSpec);
+Procedure TouchdownReport(Sink:Real;Const Sp:TSpec;OnWater:Boolean);
 Var
  Fpm:LongInt;
  Rate,Loc:String;
@@ -1430,6 +1833,7 @@ Begin
  If Sink<2.0 Then Begin Rate:=Tr(T_GOOD);  Col:=LightGreen; End Else
  If Sink<Sp.CrashVS*0.7 Then Begin Rate:=Tr(T_FIRM); Col:=Yellow; End
  Else Begin Rate:=Tr(T_HARD); Col:=LightRed; End;
+ If OnWater Then Loc:=Tr(T_WATER) Else
  If OnRunway(Fl.P.X,Fl.P.Y,Ap) Then Loc:=Tr(T_ONRWY) Else Loc:=Tr(T_OFF);
  SetMsg(Tr(T_TD)+' : '+IntStr(Fpm)+' ft/min - '+Rate+' ('+Loc+')',
         Col,7.0);
@@ -1441,14 +1845,17 @@ Var
  Sp:TSpec;
  M,Rho,V,Q,Al,Be,CL,CD,Lm,Dm,Ym,Tm,FlapF,GearF,Ce,Ce2,Tgt:Real;
  Vf,Vr,Vu,Tmp,Tur:Real;
- Va,Vh,Ll,Acc,OldF,OldR,OldU:TVec;
+ Va,Vh,Ll,Acc,OldF,OldR,OldU,Td:TVec;
  Ps,Th,Rl,Pr,Qr,Yr,Gam:Real;
  Stall,SWarn:Boolean;
  Hgt,TerH,Heff,Mu,Nf,Hs,Sp2,Sink,Yg,Fx,Fy,Fn:Real;
+ ABf,Idle,Gf,AGL:Real;
+ Wat:Boolean;
  I:Integer;
 Begin
  If F.Crashed Then Exit;
  Sp:=Specs[F.Spec];
+ TerH:=TerrainH(F.P.X,F.P.Y);
 
  { train d'atterrissage }
  If Sp.Retract Then Begin
@@ -1458,12 +1865,22 @@ Begin
   Else
  F.GearPos:=1.0;
 
+ { remorquage des planeurs : largage a 600 m }
+ If Sp.Tow and(F.Thr>0.0)and(F.P.Z-TerH>600.0)Then Begin
+  F.Thr:=0.0;
+  F.TowDone:=True;
+  SetMsg(Tr(W_TOWREL),LightCyan,4.0);
+ End;
+
  { moteur et carburant }
  Tgt:=F.Thr;
  If F.Fuel<=0.0 Then Tgt:=0.0;
  F.Spool:=F.Spool+(Tgt-F.Spool)*MinR(1.0,Dt/Sp.SpoolT);
- If F.Fuel>0.0 Then Begin
-  F.Fuel:=F.Fuel-Sp.FuelFlow*(0.08+0.92*F.Spool)*Dt;
+ ABf:=0.0;
+ If Sp.Ab Then ABf:=Clamp((F.Spool-0.85)/0.15,0.0,1.0);
+ If Sp.Cat in['R','H','G']Then Idle:=0.0 Else Idle:=0.08;
+ If(F.Fuel>0.0)and(Sp.FuelFlow>0.0)Then Begin
+  F.Fuel:=F.Fuel-Sp.FuelFlow*(Idle+(1.0-Idle)*F.Spool)*(1.0+1.4*ABf)*Dt;
   If F.Fuel<0.0 Then F.Fuel:=0.0;
  End;
 
@@ -1488,8 +1905,13 @@ Begin
  GearF:=0.0;
  If Sp.Retract Then GearF:=F.GearPos;
  Aero(Sp,Al,FlapF,GearF,F.Mach,CL,CD,Stall,SWarn);
+ { effet de sol }
+ AGL:=F.P.Z-TerH-Sp.GearH;
+ Gf:=Clamp(1.0-AGL/Sp.Span,0.0,1.0)*Sp.GroundFx;
+ CL:=CL*(1.0+Gf);
+ CD:=CD*(1.0-0.5*Gf);
  F.Alpha:=Al; F.Beta:=Be;
- F.Stalled:=Stall or SWarn;
+ F.Stalled:=(Stall or SWarn)and(Sp.Cat<>'C');
  Lm:=Q*Sp.S*CL;
  Dm:=Q*Sp.S*CD;
  Ym:=-Q*Sp.S*0.6*Be;
@@ -1502,10 +1924,11 @@ Begin
 
  Tm:=ThrustFun(Sp,F.Spool,V,Rho,F.Mach);
 
- Acc.X:=(Lm*Ll.X-Dm*Vh.X+Ym*F.R.X+Tm*F.F.X)/M;
- Acc.Y:=(Lm*Ll.Y-Dm*Vh.Y+Ym*F.R.Y+Tm*F.F.Y)/M;
- Acc.Z:=(Lm*Ll.Z-Dm*Vh.Z+Ym*F.R.Z+Tm*F.F.Z)/M-G0;
- F.GLoad:=(Lm*Dot(Ll,F.U)-Dm*Dot(Vh,F.U)+Tm*Dot(F.F,F.U))/(M*G0);
+ If Sp.Cat='C' Then Td:=F.U Else Td:=F.F;
+ Acc.X:=(Lm*Ll.X-Dm*Vh.X+Ym*F.R.X+Tm*Td.X)/M;
+ Acc.Y:=(Lm*Ll.Y-Dm*Vh.Y+Ym*F.R.Y+Tm*Td.Y)/M;
+ Acc.Z:=(Lm*Ll.Z-Dm*Vh.Z+Ym*F.R.Z+Tm*Td.Z)/M-G0;
+ F.GLoad:=(Lm*Dot(Ll,F.U)-Dm*Dot(Vh,F.U)+Tm*Dot(Td,F.U))/(M*G0);
 
  { turbulence }
  If(Wind.X<>0.0)or(Wind.Y<>0.0)Then Begin
@@ -1528,6 +1951,16 @@ Begin
  If F.Assist and(Abs(F.Ail)<0.05)and(Abs(Rl)<1.3)Then
   Pr:=Pr-0.35*Sin(Rl)*Ce2;
  Yr:=Sp.Krud*F.Rud*Ce+Sp.Kw*Be*Ce2;
+ If Sp.Cat='C' Then Begin
+  { helicoptere : pas de stabilite aerodynamique }
+  Qr:=Sp.Kq*F.Elev;
+  Pr:=Sp.PMax*F.Ail;
+  Yr:=Sp.Krud*F.Rud+Sp.Kw*Be;
+  If F.Assist Then Begin
+   If Abs(F.Elev)<0.05 Then Qr:=Qr-1.2*Sin(Th);
+   If Abs(F.Ail)<0.05 Then Pr:=Pr-1.2*Sin(Rl);
+  End;
+ End;
  If F.OnGround Then Qr:=Qr-0.8*Th;
 
  OldF:=F.F; OldR:=F.R; OldU:=F.U;
@@ -1558,8 +1991,9 @@ Begin
    F.Air:=False;
    Sink:=-F.V.Z;
    AxesToEuler(F.F,F.R,F.U,Ps,Th,Rl);
+   Wat:=InLake(F.P.X,F.P.Y);
    If TerH>4.0 Then DoCrash(F,C_TERRAIN) Else
-   If InLake(F.P.X,F.P.Y)Then DoCrash(F,C_WATER) Else
+   If Wat and(Not Sp.Float)Then DoCrash(F,C_WATER) Else
    If Sink>Sp.CrashVS*1.5 Then DoCrash(F,C_HARD) Else
    If Abs(Rl)>Sp.MaxBank Then DoCrash(F,C_WING) Else
    If Th<-0.15 Then DoCrash(F,C_NOSE) Else
@@ -1570,12 +2004,18 @@ Begin
     End;
    End
     Else
-   TouchdownReport(Sink,Sp);
+   If Sp.Float and(Not Wat)and(Not Sp.Amph)Then Begin
+    F.Belly:=True;
+    SetMsg(Tr(C_HULL),LightRed,8.0);
+   End
+    Else
+   TouchdownReport(Sink,Sp,Wat);
   End;
   If Not F.Crashed Then Begin
    F.OnGround:=True;
    F.P.Z:=TerH+Heff;
    If F.V.Z<0.0 Then F.V.Z:=0.0;
+   Wat:=InLake(F.P.X,F.P.Y);
 
    { assiette : roulis nul, tangage entre 0 et la garde au sol }
    AxesToEuler(F.F,F.R,F.U,Ps,Th,Rl);
@@ -1600,9 +2040,11 @@ Begin
     Fx:=Fx/Fn; Fy:=Fy/Fn;
     Sp2:=F.V.X*Fx+F.V.Y*Fy;
     If Sp2<0.0 Then Sp2:=0.0;
+    If Wat and Sp.Float Then Mu:=0.03+0.0003*Hs Else
     If F.Belly Then Mu:=0.45 Else
     If OnPaved(F.P.X,F.P.Y)Then Mu:=0.02 Else Mu:=0.07;
-    If F.Brakes and(Not F.Belly)Then Mu:=Mu+Sp.BrakeMu;
+    If Sp.Cat='C' Then Mu:=0.15;
+    If F.Brakes and(Not F.Belly)and(Not Wat)Then Mu:=Mu+Sp.BrakeMu;
     Nf:=Clamp(1.0-Lm*Ll.Z/(M*G0),0.0,1.0);
     Sp2:=Sp2-Mu*Nf*G0*Dt;
     If Sp2<0.0 Then Sp2:=0.0;
@@ -1626,7 +2068,8 @@ Begin
  If Not F.Crashed Then Begin
   If(F.GLoad>Sp.NLim*1.7)or(F.GLoad<-Sp.NLim*0.8)Then DoCrash(F,C_OVERG)
   Else
-  If V>Sp.Vne*1.4 Then DoCrash(F,C_OVERSPD);
+  If(F.IAS>Sp.Vne*1.4)or((F.Mach>Sp.McritW+0.25)and(Sp.WaveK>0.3))Then
+   DoCrash(F,C_OVERSPD);
  End;
  F.FlightT:=F.FlightT+Dt;
 End;
@@ -1642,7 +2085,7 @@ Var
  CLreq,AlphaReq,ElevFF,Cmax,Vs1,Vmin:Real;
 Begin
  Sp:=Specs[F.Spec];
- If F.OnGround or F.Crashed Then Begin
+ If F.OnGround or F.Crashed or(Sp.Cat='C')Then Begin
   F.AP:=False;
   Exit;
  End;
@@ -1678,10 +2121,10 @@ Begin
  CLreq:=Clamp(CLreq,-0.5,Cmax*0.85);
  AlphaReq:=(CLreq-Cf)/Sp.CLa+Sp.Alpha0;
  ElevFF:=(AlphaReq-Sp.AlphaTrim)*Sp.Ks/Sp.Kq;
- F.Elev:=Clamp(ElevFF+5.0*(GamD-Gam),-1.0,1.0);
+ If Not Sp.Tow Then F.Elev:=Clamp(ElevFF+5.0*(GamD-Gam),-1.0,1.0);
 
  { vitesse : automanette }
- If(F.Thr>=0.0)Then Begin
+ If Not Sp.Tow Then Begin
   F.Thr:=Clamp(F.Thr+0.01*(F.APSpd-V)*Dt,0.0,1.0);
  End;
 End;
@@ -1691,7 +2134,7 @@ End;
 { ------------------------------------------------------------------ }
 
 { Regle manette et profondeur pour un vol stabilise (vitesse V, pente Gam) }
-Procedure TrimFlight(Var F:TFlt;V,Gam:Real);
+Procedure TrimFlight(Var F:TFlt;V:Real;Var Gam:Real);
 Var
  Sp:TSpec;
  M,Rho,Q,CL,CD,Al,Cf,FlapF,GearF,Treq,Mach,S0,S1,Sm:Real;
@@ -1711,6 +2154,13 @@ Begin
  Cf:=0.8*(Sp.CLmaxF-Sp.CLmax)*FlapF;
  Al:=(CL-Cf)/Sp.CLa+Sp.Alpha0;
  Aero(Sp,Al,FlapF,GearF,Mach,CL,CD,Stall,SW);
+ If Sp.Tow Then Begin
+  { planeur : vol plane, la pente est imposee par la finesse }
+  Gam:=-ArcTan(CD/CL);
+  CL:=M*G0*Cos(Gam)/(Q*Sp.S);
+  Al:=(CL-Cf)/Sp.CLa+Sp.Alpha0;
+  Aero(Sp,Al,FlapF,GearF,Mach,CL,CD,Stall,SW);
+ End;
  Treq:=Q*Sp.S*CD+M*G0*Sin(Gam);
  S0:=0.0; S1:=1.0;
  For I:=1 to 24 do Begin
@@ -1718,6 +2168,7 @@ Begin
   If ThrustFun(Sp,Sm,V,Rho,Mach)<Treq Then S0:=Sm Else S1:=Sm;
  End;
  F.Thr:=(S0+S1)/2.0;
+ If Sp.Tow Then F.Thr:=0.0;
  F.Spool:=F.Thr;
  F.Elev:=Clamp((Al-Sp.AlphaTrim+0.12*Gam)*Sp.Ks/Sp.Kq,-1.0,1.0);
  F.Alpha:=Al;
@@ -1726,12 +2177,13 @@ End;
 Procedure SetupFlight(Var F:TFlt);
 Var
  Sp:TSpec;
- X,Y,Hdg,Psi,Dist,Spd,Gam:Real;
+ X,Y,Hdg,Psi,Dist,Spd,Gam,Cr:Real;
  WS,WD:Real;
  Ap:Integer;
 Begin
  FillChar(F,SizeOf(F),0);
- F.Spec:=OptPlane;
+ LoadAircraft(OptPlane);
+ F.Spec:=SLOT_CUR;
  Sp:=Specs[F.Spec];
  F.Fuel:=Sp.FuelCap*Sp.FuelFrac;
  F.Assist:=(OptAssist=1);
@@ -1753,8 +2205,28 @@ Begin
  Psi:=Hdg*Pi/180.0;
 
  Spd:=0.0;
+ If(Sp.Cat='C')and(OptStart>0)Then Begin
+  { helicoptere : vol stationnaire au-dessus de l'aeroport }
+  If OptStart=1 Then Dist:=60.0 Else Dist:=400.0;
+  VSet(F.P,X+Sin(Psi)*200.0,Y+Cos(Psi)*200.0,Dist);
+  EulerToAxes(Psi,0.0,0.0,F.F,F.R,F.U);
+  F.Thr:=Clamp((Sp.Empty+F.Fuel)*G0/(Sp.Tstat*Exp(0.8*Ln(Density(Dist)/1.225))),
+               0.0,1.0);
+  F.Spool:=F.Thr;
+  F.Air:=True;
+  F.GearDn:=True;
+ End
+  Else
  Case OptStart of
   0:Begin
+     If Sp.Float and(Not Sp.Amph)Then Begin
+      { depart sur l'eau, au bord ouest du premier lac }
+      X:=Lakes[0].X-Lakes[0].RX*0.8;
+      Y:=Lakes[0].Y;
+      Psi:=Pi/2.0;
+      VSet(F.P,X,Y,Sp.GearH);
+     End
+      Else
      VSet(F.P,X+Sin(Psi)*80.0,Y+Cos(Psi)*80.0,Sp.GearH);
      EulerToAxes(Psi,0.0,0.0,F.F,F.R,F.U);
      F.Brakes:=True;
@@ -1779,13 +2251,16 @@ Begin
     End;
   Else Begin
      VSet(F.P,X+Sin(Psi)*100.0,Y+Cos(Psi)*100.0,1500.0);
-     Spd:=0.62*Sp.Vne;
+     Spd:=MinR(0.62*Sp.Vne,0.85*Sp.McritW*SoundSpeed(1500.0));
+     Cr:=Sqrt(2.0*(Sp.Empty+F.Fuel)*G0/(1.225*Sp.S*Sp.CLmax));
+     Spd:=MaxR(Spd,1.4*Cr);
      If Sp.Retract Then Begin
       F.GearDn:=False; F.GearPos:=0.0;
      End;
-     TrimFlight(F,Spd,0.0);
-     EulerToAxes(Psi,F.Alpha,0.0,F.F,F.R,F.U);
-     VSet(F.V,Sin(Psi)*Spd,Cos(Psi)*Spd,0.0);
+     Gam:=0.0;
+     TrimFlight(F,Spd,Gam);
+     EulerToAxes(Psi,Gam+F.Alpha,0.0,F.F,F.R,F.U);
+     VSet(F.V,Sin(Psi)*Cos(Gam)*Spd,Cos(Psi)*Cos(Gam)*Spd,Sin(Gam)*Spd);
      F.V.X:=F.V.X+Wind.X; F.V.Y:=F.V.Y+Wind.Y;
      F.Air:=True;
     End;
@@ -2421,9 +2896,9 @@ Type
  End;
 
 Var
- MP  : Array[0..59] Of TMPoly;
+ MP  : Array[0..79] Of TMPoly;
  MPN : Integer;
- MPO : Array[0..59] Of Integer;
+ MPO : Array[0..79] Of Integer;
  MBase : TFlt;
 
 Procedure LocW(Lx,Ly,Lz:Real;Var W:TVec);
@@ -2435,7 +2910,7 @@ End;
 
 Procedure AddQ(X1,Y1,Z1,X2,Y2,Z2,X3,Y3,Z3,X4,Y4,Z4:Real;Col,Line:Integer);
 Begin
- If MPN>=60 Then Exit;
+ If MPN>=80 Then Exit;
  MP[MPN].N:=4;
  LocW(X1,Y1,Z1,MP[MPN].P[0]);
  LocW(X2,Y2,Z2,MP[MPN].P[1]);
@@ -2447,7 +2922,7 @@ End;
 
 Procedure AddT(X1,Y1,Z1,X2,Y2,Z2,X3,Y3,Z3:Real;Col,Line:Integer);
 Begin
- If MPN>=60 Then Exit;
+ If MPN>=80 Then Exit;
  MP[MPN].N:=3;
  LocW(X1,Y1,Z1,MP[MPN].P[0]);
  LocW(X2,Y2,Z2,MP[MPN].P[1]);
@@ -2471,22 +2946,40 @@ Begin
       CX+L,CY-Rd,CZ+Rd,Black,DarkGray);
 End;
 
+{ Helice : deux pales tournantes dans le plan Y-Z }
+Procedure AddProp(CX,CY,CZ,Rad:Real);
+Var
+ Ang:Real;
+Begin
+ If MBase.Spool>0.1 Then Ang:=FrameNo*0.9 Else Ang:=0.6;
+ AddQ(CX,CY+Sin(Ang)*Rad,CZ+Cos(Ang)*Rad,
+      CX,CY+Sin(Ang)*Rad*0.9+0.1*Rad,CZ+Cos(Ang)*Rad*0.9,
+      CX,CY-Sin(Ang)*Rad,CZ-Cos(Ang)*Rad,
+      CX,CY-Sin(Ang)*Rad*0.9-0.1*Rad,CZ-Cos(Ang)*Rad*0.9,DarkGray,-1);
+End;
+
+{ Construit les polygones de l'avion a partir de sa fiche }
 Procedure BuildPlane(Var F:TFlt);
 Var
  Sp:TSpec;
- L,S,Rf,Sw,Zw,Ts,HF,Ang:Real;
- Sd:Real;
- WC:Integer;
+ L,Sx,Rf,Sw,Zw,Ts,HF,Cm,Cr,Ct,Xle,Yk,Xk,Hl,Rd,Ang:Real;
+ WC,K,N,Pairs:Integer;
 Begin
  Sp:=Specs[F.Spec];
  MBase:=F;
  MPN:=0;
- L:=Sp.Len; S:=Sp.Span/2.0;
- If Sp.Jet Then Rf:=L*0.075 Else Rf:=L*0.1;
- If Sp.Jet Then Sw:=L*0.14 Else Sw:=0.0;
- If Sp.Jet Then WC:=LightGray Else WC:=Sp.Col2;
- If F.Spec=0 Then WC:=LightGray;
- Zw:=-Rf*0.4;
+ L:=Sp.Len;
+ Sx:=Sp.Span/2.0;
+ { rayon du fuselage }
+ Case Sp.Cat of
+  'C':Rf:=L*0.12;
+  'A','R','U':Rf:=L*0.05;
+  'J':If(Sp.NEng>=2)and(Sp.MTow>20000.0)Then Rf:=L*0.075 Else Rf:=L*0.06;
+  'G','H':Rf:=L*0.06;
+  Else If Sp.NEng=1 Then Rf:=L*0.09 Else Rf:=L*0.07;
+ End;
+ WC:=DarkOf(Sp.Col1);
+ If WC=Black Then WC:=DarkGray;
 
  { fuselage }
  AddT(0.5*L,0,0, 0.28*L,0,Rf, 0.28*L,Rf,0, Sp.Col2,-1);
@@ -2510,49 +3003,98 @@ Begin
  AddT(-0.3*L,-0.55*Rf,0.02*L, -0.3*L,0,0.55*Rf+0.02*L, -0.5*L,0,0.04*L,
       Sp.Col1,-1);
 
- { ailes }
- AddQ(0.12*L,0.8*Rf,Zw, 0.12*L-Sw,S,Zw+0.03*S, -0.04*L-Sw,S,Zw+0.03*S,
-      -0.1*L,0.8*Rf,Zw, WC,DarkGray);
- AddQ(0.12*L,-0.8*Rf,Zw, 0.12*L-Sw,-S,Zw+0.03*S, -0.04*L-Sw,-S,Zw+0.03*S,
-      -0.1*L,-0.8*Rf,Zw, WC,DarkGray);
- If F.Spec=1 Then Begin
-  { biplan : deuxieme aile }
-  AddQ(0.12*L,0.8*Rf,Rf*0.9, 0.12*L,S,Rf*0.9, -0.1*L,S,Rf*0.9,
-       -0.12*L,0.8*Rf,Rf*0.9, WC,DarkGray);
-  AddQ(0.12*L,-0.8*Rf,Rf*0.9, 0.12*L,-S,Rf*0.9, -0.1*L,-S,Rf*0.9,
-       -0.12*L,-0.8*Rf,Rf*0.9, WC,DarkGray);
+ { ailes : surface, fleche et position tirees de la fiche }
+ If Sp.Cat<>'C' Then Begin
+  Cm:=Sp.S/Sp.Span;
+  If Sp.Delta Then Begin
+   Cr:=MinR(0.65*L,1.9*Cm); Ct:=0.1*Cm;
+  End
+   Else Begin
+    Cr:=MinR(0.4*L,1.6*Cm); Ct:=0.4*Cm;
+   End;
+  Sw:=Sx*Tan(Sp.Sweep*Pi/180.0)+(Cr-Ct)/4.0;
+  If Sw>0.35*L Then Sw:=0.35*L;
+  If Sp.Delta Then Xle:=-0.45*L+Cr Else
+  If Sp.Cat in['A','R','U']Then Xle:=0.02*L+Cr*0.3 Else
+  If Sp.Sweep>20.0 Then Xle:=0.12*L Else Xle:=0.16*L;
+  If Sp.HighWing or Sp.Float Then Zw:=0.7*Rf Else
+  If(Sp.Cat='J')and(Sp.MTow>20000.0)Then Zw:=-0.5*Rf Else Zw:=-0.15*Rf;
+  If Sp.Wings>=2 Then Zw:=-0.4*Rf;
+  If Sx<0.9*Rf Then Sx:=0.9*Rf;
+  AddQ(Xle,0.8*Rf,Zw, Xle-Sw,Sx,Zw+0.03*Sx, Xle-Sw-Ct,Sx,Zw+0.03*Sx,
+       Xle-Cr,0.8*Rf,Zw, WC,DarkGray);
+  AddQ(Xle,-0.8*Rf,Zw, Xle-Sw,-Sx,Zw+0.03*Sx, Xle-Sw-Ct,-Sx,Zw+0.03*Sx,
+       Xle-Cr,-0.8*Rf,Zw, WC,DarkGray);
+  If Sp.Wings>=2 Then Begin
+   AddQ(Xle,0.8*Rf,Rf*1.1, Xle,Sx*0.9,Rf*1.1, Xle-Cr,Sx*0.9,Rf*1.1,
+        Xle-Cr,0.8*Rf,Rf*1.1, WC,DarkGray);
+   AddQ(Xle,-0.8*Rf,Rf*1.1, Xle,-Sx*0.9,Rf*1.1, Xle-Cr,-Sx*0.9,Rf*1.1,
+        Xle-Cr,-0.8*Rf,Rf*1.1, WC,DarkGray);
+  End;
  End;
 
  { empennage }
- Ts:=Sp.Span*0.17;
- If Sp.Jet Then HF:=L*0.17 Else HF:=L*0.14;
- AddQ(-0.38*L,0.3*Rf,0.03*L, -0.42*L,Ts,0.03*L, -0.48*L,Ts,0.03*L,
-      -0.48*L,0.3*Rf,0.03*L, WC,DarkGray);
- AddQ(-0.38*L,-0.3*Rf,0.03*L, -0.42*L,-Ts,0.03*L, -0.48*L,-Ts,0.03*L,
-      -0.48*L,-0.3*Rf,0.03*L, WC,DarkGray);
+ If Sp.Cat in['C','A','J','R','U']Then HF:=L*0.15 Else HF:=L*0.14;
+ If Not Sp.Delta Then Begin
+  Ts:=MaxR(Sx*0.35,Sp.Span*0.12);
+  If Sp.Cat='C' Then Ts:=Rf*0.7;
+  AddQ(-0.38*L,0.3*Rf,0.03*L, -0.42*L,Ts,0.03*L, -0.48*L,Ts,0.03*L,
+       -0.48*L,0.3*Rf,0.03*L, WC,DarkGray);
+  AddQ(-0.38*L,-0.3*Rf,0.03*L, -0.42*L,-Ts,0.03*L, -0.48*L,-Ts,0.03*L,
+       -0.48*L,-0.3*Rf,0.03*L, WC,DarkGray);
+ End;
  AddQ(-0.33*L,0,0.5*Rf, -0.48*L,0,0.5*Rf, -0.5*L,0,HF, -0.44*L,0,HF,
       Sp.Col2,DarkGray);
 
- { moteurs a reaction }
- If Sp.Jet Then Begin
-  If F.Spec=3 Then Begin
-   AddEngine(0.08*L,0.3*S,-Rf*1.3,0.06*L,Rf*0.5,LightGray);
-   AddEngine(0.08*L,-0.3*S,-Rf*1.3,0.06*L,Rf*0.5,LightGray);
-  End
-   Else
-  Begin
-   AddEngine(-0.32*L,Rf+0.04*L,0.2*Rf,0.07*L,0.04*L,LightGray);
-   AddEngine(-0.32*L,-Rf-0.04*L,0.2*Rf,0.07*L,0.04*L,LightGray);
+ { moteurs }
+ N:=Sp.NEng;
+ If N>6 Then N:=6;
+ If Sp.Cat='C' Then Begin
+  { rotor principal }
+  If F.Spool>0.1 Then Ang:=FrameNo*0.7 Else Ang:=0.4;
+  AddQ(Cos(Ang)*Sx,Sin(Ang)*Sx,Rf*1.4,
+       Cos(Ang)*Sx-0.04*Sx*Sin(Ang),Sin(Ang)*Sx+0.04*Sx*Cos(Ang),Rf*1.4,
+       -Cos(Ang)*Sx+0.04*Sx*Sin(Ang),-Sin(Ang)*Sx-0.04*Sx*Cos(Ang),Rf*1.4,
+       -Cos(Ang)*Sx,-Sin(Ang)*Sx,Rf*1.4,DarkGray,-1);
+ End
+  Else
+ If Sp.Cat in['P','T','H']Then Begin
+  If(N=1)or Odd(N)Then AddProp(0.52*L,0,0,Rf*1.7);
+  Pairs:=N div 2;
+  If Sp.Cat='H' Then Pairs:=0;
+  Hl:=0.045*L; Rd:=0.022*L;
+  If Rd<0.25 Then Rd:=0.25;
+  If Hl<0.5 Then Hl:=0.5;
+  For K:=0 to Pairs-1 do Begin
+   Yk:=Sx*(0.22+0.2*K);
+   Xk:=Xle-Sw*Yk/Sx+0.02*L;
+   AddEngine(Xk,Yk,Zw-0.1*Rf,Hl,Rd,WC);
+   AddEngine(Xk,-Yk,Zw-0.1*Rf,Hl,Rd,WC);
+   AddProp(Xk+Hl+0.01*L,Yk,Zw-0.1*Rf,Rd*2.2);
+   AddProp(Xk+Hl+0.01*L,-Yk,Zw-0.1*Rf,Rd*2.2);
   End;
  End
   Else
- Begin
-  { helice }
-  If F.Spool>0.1 Then Ang:=FrameNo*0.9 Else Ang:=0.6;
-  Sd:=Rf*1.7;
-  AddQ(0.52*L,Sin(Ang)*Sd,Cos(Ang)*Sd, 0.52*L,Sin(Ang)*Sd*0.9+0.1*Rf,
-       Cos(Ang)*Sd*0.9, 0.52*L,-Sin(Ang)*Sd,-Cos(Ang)*Sd,
-       0.52*L,-Sin(Ang)*Sd*0.9-0.1*Rf,-Cos(Ang)*Sd*0.9, DarkGray,-1);
+ If(Sp.Cat='J')and(N>=2)and(Sp.MTow>20000.0)Then Begin
+  Hl:=0.045*L; Rd:=0.022*L;
+  For K:=0 to (N div 2)-1 do Begin
+   Yk:=Sx*(0.28+0.18*K);
+   Xk:=Xle-Sw*Yk/Sx+0.02*L;
+   AddEngine(Xk,Yk,Zw-1.6*Rd,Hl,Rd,WC);
+   AddEngine(Xk,-Yk,Zw-1.6*Rd,Hl,Rd,WC);
+  End;
+ End;
+
+ { flotteurs ou coque }
+ If Sp.Float Then Begin
+  If Sp.MTow<8000.0 Then Begin
+   AddEngine(0.0,0.28*Sx,Zw-Rf*1.4,0.28*L,0.04*L,LightGray);
+   AddEngine(0.0,-0.28*Sx,Zw-Rf*1.4,0.28*L,0.04*L,LightGray);
+  End
+   Else Begin
+    AddEngine(0.05*L,0.92*Sx,Zw-0.02*L,0.05*L,0.015*L,LightGray);
+    AddEngine(0.05*L,-0.92*Sx,Zw-0.02*L,0.05*L,0.015*L,LightGray);
+   End;
  End;
 End;
 
@@ -2605,11 +3147,12 @@ Begin
   VSet(Sh[K],F.P.X+Cos(Ang)*R,F.P.Y+Sin(Ang)*R*0.6,
        TerrainH(F.P.X,F.P.Y)+0.2);
  End;
- If Not Night Then DrawPoly3D(C,Sh,10,DarkGray,-1);
+ If(Not Night)and(Not InLake(F.P.X,F.P.Y))Then
+  DrawPoly3D(C,Sh,10,DarkGray,-1);
  BuildPlane(F);
  SortAndDrawModel(C);
  { train d'atterrissage }
- If F.GearPos>0.5 Then Begin
+ If(F.GearPos>0.5)and((Not Sp.Float)or Sp.Amph)Then Begin
   LocW(0.05*Sp.Len,0.2*Sp.Span/2.0,-Sp.GearH*0.2,A);
   LocW(0.05*Sp.Len,0.2*Sp.Span/2.0,-Sp.GearH,B);
   DrawLine3D(C,A,B,Black);
@@ -2846,7 +3389,7 @@ Begin
  Sp:=Specs[F.Spec];
  AGL:=F.P.Z-TerrainH(F.P.X,F.P.Y);
  If F.Fuel<=0.0 Then CurrentWarning:=W_NOFUEL;
- If(F.IAS>Sp.Vne)or(F.Mach>Sp.McritW+0.07)and Sp.Jet Then
+ If(F.IAS>Sp.Vne)or((F.Mach>Sp.McritW+0.07)and(Sp.WaveK>0.3))Then
   CurrentWarning:=W_OVERSPD;
  If(F.GLoad>Sp.NLim)or(F.GLoad<-Sp.NLim*0.5)Then CurrentWarning:=W_OVERG;
  If Sp.Retract and(Not F.GearDn)and(AGL<250.0)and(F.V.Z<-1.0)and
@@ -2984,7 +3527,7 @@ Begin
  For K:=0 to 10 do Begin
   If K mod 2=0 Then Begin
    Needle(CX,CY_I,SpdAng(K*N,Sp.VDial),R_I-5,R_I-9,White);
-   Str(K*N,S);
+   If Sp.VDial>=1000 Then Str(Round(K*N/100.0),S) Else Str(K*N,S);
    DialPt(CX,CY_I,SpdAng(K*N,Sp.VDial),R_I-17,X,Y);
    PutTextC(X,Y-4,S,White);
   End
@@ -2992,7 +3535,8 @@ Begin
  End;
  Str(Round(Spd),S);
  PutTextC(CX,CY_I+14,S,LightCyan);
- PutTextC(CX,CY_I+25,'kt',LightGray);
+ If Sp.VDial>=1000 Then PutTextC(CX,CY_I+25,'kt x100',LightGray)
+                  Else PutTextC(CX,CY_I+25,'kt',LightGray);
  Needle(CX,CY_I,SpdAng(Spd,Sp.VDial),0,R_I-7,White);
  SetFillStyle(SolidFill,LightGray);
  Bar(CX-1,CY_I-1,CX+1,CY_I+1);
@@ -3159,34 +3703,52 @@ End;
 { Variometre }
 Procedure DrawVSI(Var F:TFlt);
 Var
- CX,K,X,Y:Integer;
- Vs,A:Real;
+ Sp:TSpec;
+ CX,K,X,Y,Sc:Integer;
+ Vs,A,Ratio:Real;
  S:String;
 Begin
  CX:=470;
+ Sp:=Specs[F.Spec];
+ Sc:=Sp.VSScale;
+ If Sc<100 Then Sc:=2000;
  Vs:=F.V.Z*FT*60.0;
  If Not InstChanged(4,Round(Vs/20.0))Then Exit;
  DialFace(CX);
  For K:=-4 to 4 do Begin
-  A:=-90.0+K*500.0/2000.0*170.0;
+  A:=-90.0+K/4.0*170.0;
   Needle(CX,CY_I,A,R_I-2,R_I-8,White);
   If(K<>0)and(K mod 2=0)Then Begin
-   Str(Abs(K) div 2,S);
+   Ratio:=Abs(K)/4.0*Sc;
+   If Sc>=1000 Then Str(Round(Ratio/1000.0),S) Else Str(Round(Ratio/100.0),S);
    DialPt(CX,CY_I,A,R_I-16,X,Y);
    PutTextC(X,Y-4,S,White);
   End;
  End;
  For K:=-8 to 8 do
   If K mod 2<>0 Then
-   Needle(CX,CY_I,-90.0+K*250.0/2000.0*170.0,R_I-2,R_I-5,LightGray);
- PutTextC(CX,CY_I-26,'x1000',LightGray);
+   Needle(CX,CY_I,-90.0+K/8.0*170.0,R_I-2,R_I-5,LightGray);
+ If Sc>=1000 Then PutTextC(CX,CY_I-26,'x1000',LightGray)
+             Else PutTextC(CX,CY_I-26,'x100',LightGray);
  Str(Round(Vs/10.0)*10,S);
  PutTextC(CX,CY_I+14,S,LightCyan);
  PutTextC(CX,CY_I+25,'ft/min',LightGray);
- Needle(CX,CY_I,-90.0+Clamp(Vs,-2000.0,2000.0)/2000.0*170.0,0,R_I-6,
-        LightGreen);
+ Needle(CX,CY_I,-90.0+Clamp(Vs,-Sc,Sc)/Sc*170.0,0,R_I-6,LightGreen);
  SetFillStyle(SolidFill,LightGray);
  Bar(CX-1,CY_I-1,CX+1,CY_I+1);
+End;
+
+Procedure VBarN(X:Integer;Frac_:Real;Col:Integer);
+Var
+ H:Integer;
+Begin
+ SetFillStyle(SolidFill,DarkGray);
+ Bar(X,350,X+11,430);
+ H:=Round(Clamp(Frac_,0.0,1.0)*78.0);
+ SetFillStyle(SolidFill,Col);
+ If H>0 Then Bar(X+1,429-H,X+10,429);
+ SetColor(LightGray);
+ Rectangle(X,350,X+11,430);
 End;
 
 Procedure VBar(X:Integer;Frac_:Real;Col:Integer;Const Lbl:String);
@@ -3205,12 +3767,13 @@ Begin
  PutTextC(X+7,433,Copy(Lbl,1,4),LightGray);
 End;
 
-{ Manette, regime moteur, carburant, commandes }
+{ Manette, regime moteur (un par moteur, 4 au plus), carburant }
 Procedure DrawBars(Var F:TFlt);
 Var
  Sp:TSpec;
  Fu:Real;
- Col:Integer;
+ Col,N,I,X:Integer;
+ L:String;
 Begin
  Sp:=Specs[F.Spec];
  Fu:=F.Fuel/Sp.FuelCap;
@@ -3218,10 +3781,42 @@ Begin
                     Round(Fu*100.0)*10+Ord(F.Fuel<=0.0))Then Exit;
  SetFillStyle(SolidFill,Black);
  Bar(520,340,SCR_W-1,445);
- VBar(528,F.Thr,Yellow,Tr(L_THR));
- VBar(568,F.Spool,LightGreen,'N1');
+ N:=Sp.NEng;
+ If N>4 Then N:=4;
+ If N<1 Then N:=1;
+ If Sp.Cat='G' Then Begin
+  { planeur : seule la manette de remorquage }
+  VBar(528,F.Thr,Yellow,Tr(L_TOW));
+  Exit;
+ End;
+ Case Sp.Cat of
+  'P':L:='RPM';
+  'T':L:='TRQ';
+  'R':L:='RKT';
+  'C':L:='NR';
+  'H':L:='PED';
+  Else L:='N1';
+ End;
+ If Sp.Cat='H' Then Begin
+  VBar(536,F.Thr,Yellow,Tr(L_THR));
+  VBar(580,F.Fuel/Sp.FuelCap,LightCyan,Tr(L_STAM));
+  Exit;
+ End;
+ VBar(522,F.Thr,Yellow,Tr(L_THR));
+ For I:=0 to N-1 do Begin
+  X:=544+I*17;
+  If Sp.Cat='J' Then VBarN(X,F.Spool,LightGreen) Else
+  If Sp.Cat='A' Then Begin
+   If F.Spool>0.85 Then VBarN(X,F.Spool,LightRed)
+                   Else VBarN(X,F.Spool,LightGreen);
+  End
+   Else VBarN(X,F.Spool,LightGreen);
+ End;
+ SetFillStyle(SolidFill,Black);
+ Bar(544,432,544+N*17,441);
+ PutText(544,433,L,LightGray);
  If Fu<0.1 Then Col:=LightRed Else Col:=LightCyan;
- VBar(608,Fu,Col,Tr(L_FUEL));
+ VBar(616,Fu,Col,Tr(L_FUEL));
 End;
 
 Procedure Lamp(X,Y,W:Integer;Const S:String;On:Boolean;Col:Integer);
@@ -3268,7 +3863,8 @@ Begin
  Id:=CurrentWarning(F);
  Fl_:=Odd(FrameNo div 6);
  Key:=Ord(F.GearDn)+2*Ord(F.GearPos>0.99)+4*F.Flaps+16*Ord(F.Brakes)+
-      32*Ord(F.AP)+64*Ord(F.Assist)+128*Ord(Fl_)+256*Id;
+      32*Ord(F.AP)+64*Ord(F.Assist)+128*Ord(Fl_)+256*Id+
+      100000*Ord(F.Spool>0.85)+200000*Ord(F.Thr>0.0);
  If F.GearPos>0.01 Then Key:=Key+1000*Ord(F.GearPos<0.99);
  If InstChanged(6,Key)Then Begin
  
@@ -3283,9 +3879,11 @@ Begin
   Lamp(212,449,28,Tr(L_AP),F.AP,LightCyan);
   Lamp(246,449,44,Tr(L_STAB),F.Assist,LightGreen);
   SetFillStyle(SolidFill,Black);
-  Bar(298,447,SCR_W-1,458);
+  Bar(296,447,SCR_W-1,458);
+  If Sp.Ab Then Lamp(296,449,28,Tr(L_AB),F.Spool>0.85,LightRed);
+  If Sp.Tow Then Lamp(296,449,52,Tr(L_TOW),F.Thr>0.0,Yellow);
   If Id<>0 Then Begin
-   If Fl_ or(Id<>W_STALL)Then PutText(298,449,Tr(Id),LightRed);
+   If Fl_ or(Id<>W_STALL)Then PutText(360,449,Tr(Id),LightRed);
   End;
  End;
  ComputeNav(F,DestAp,Dst,Brg,Loc,Gs,Ils);
@@ -3306,8 +3904,8 @@ Begin
   VIEW_TOWER:S:=S+Tr(V_TOWER);
   Else S:=S+Tr(V_MAP);
  End;
- S:=S+'   '+Specs[F.Spec].Name+'   '+PadZ(Trunc(F.FlightT) div 60,2)+':'+
-    PadZ(Trunc(F.FlightT) mod 60,2);
+ S:=S+'   '+Copy(Specs[F.Spec].Name,1,22)+'   '+
+    PadZ(Trunc(F.FlightT) div 60,2)+':'+PadZ(Trunc(F.FlightT) mod 60,2);
  TextLine(1,469,S,LightGray);
 End;
 
@@ -3584,7 +4182,7 @@ End;
 Function OptionText(Row:Integer):String;
 Begin
  Case Row of
-  0:OptionText:=Tr(M_AIRCRAFT)+' : '+Specs[OptPlane].Name;
+  0:OptionText:=Tr(M_AIRCRAFT)+' : '+Specs[SLOT_CUR].Name;
   1:OptionText:=Tr(M_AIRPORT)+' : '+Aps[OptAirport].Name+' ('+
                 Aps[OptAirport].Code+')';
   2:Begin
@@ -3621,7 +4219,10 @@ End;
 Procedure ChangeOption(Row,Dir:Integer);
 Begin
  Case Row of
-  0:OptPlane:=(OptPlane+Dir+NB_PLANE)mod NB_PLANE;
+  0:Begin
+     OptPlane:=(OptPlane+Dir+NAc)mod NAc;
+     LoadAircraft(OptPlane);
+    End;
   1:OptAirport:=(OptAirport+Dir+NB_AIRPORT)mod NB_AIRPORT;
   2:OptStart:=(OptStart+Dir+3)mod 3;
   3:OptNight:=1-OptNight;
@@ -3657,6 +4258,160 @@ Begin
  If Ch=#0 Then Ch:=ReadKey;
 End;
 
+Function CatMsg(C:Char):Integer;
+Begin
+ CatMsg:=K_P+Pos(C,'PTJARUGHC')-1;
+End;
+
+{ Lit uniquement le nom d'une fiche }
+Function AcName(I:Integer):String;
+Var
+ T:Text;
+ L:String;
+ N:Integer;
+Begin
+ AcName:='';
+ If AcFile[I][1]='*' Then Begin
+  AcName:=Specs[Ord(AcFile[I][2])-48].Name;
+  Exit;
+ End;
+ Assign(T,AcDir+AcFile[I]+'.FLT');
+ {$I-}
+ Reset(T);
+ {$I+}
+ If IOResult<>0 Then Exit;
+ N:=0;
+ While(Not Eof(T))and(N<8)do Begin
+  ReadLn(T,L);
+  Inc(N);
+  If Copy(L,1,5)='NAME=' Then Begin
+   AcName:=Copy(L,6,40);
+   N:=99;
+  End;
+ End;
+ Close(T);
+End;
+
+{ Texte coupe en lignes de largeur W (en caracteres) }
+Procedure DrawWrap(X,Y,W,MaxL:Integer;Const S:String;Col:Integer);
+Var
+ L,Wd:String;
+ P,N:Integer;
+ T:String;
+Begin
+ T:=S+' ';
+ L:='';
+ N:=0;
+ While(Length(T)>0)and(N<MaxL)do Begin
+  P:=Pos(' ',T);
+  Wd:=Copy(T,1,P-1);
+  Delete(T,1,P);
+  If(Length(L)+Length(Wd)+1>W)and(L<>'')Then Begin
+   PutText(X,Y+N*10,L,Col);
+   Inc(N);
+   L:='';
+  End;
+  If L='' Then L:=Wd Else L:=L+' '+Wd;
+ End;
+ If(L<>'')and(N<MaxL)Then PutText(X,Y+N*10,L,Col);
+End;
+
+{ Liste des avions : choix du modele a piloter }
+Function PickAircraft:Boolean;
+Const
+ ROWS = 18;
+Var
+ Sel,Top,I,Y,Old,L:Integer;
+ Ch:Char;
+ Done:Boolean;
+ Sp:TSpec;
+ S:String;
+Begin
+ Old:=OptPlane;
+ Sel:=OptPlane;
+ Top:=0;
+ Done:=False;
+ PickAircraft:=False;
+ SetViewPort(0,0,SCR_W-1,479,True);
+ SetTextStyle(DefaultFont,HorizDir,1);
+ While Not Done do Begin
+  If Sel<Top Then Top:=Sel;
+  If Sel>=Top+ROWS Then Top:=Sel-ROWS+1;
+  LoadAircraft(Sel);
+  Sp:=Specs[SLOT_CUR];
+  SetFillStyle(SolidFill,Black);
+  Bar(0,0,SCR_W-1,479);
+  SetColor(LightCyan);
+  Rectangle(4,4,SCR_W-5,475);
+  CenterBig(10,Tr(M_AIRCRAFT)+' ('+IntStr(Sel+1)+'/'+IntStr(NAc)+')',2,Yellow);
+  For I:=Top to Top+ROWS-1 do
+   If I<NAc Then Begin
+    Y:=44+(I-Top)*21;
+    If I=Sel Then Begin
+     SetFillStyle(SolidFill,Blue);
+     Bar(10,Y-3,400,Y+10);
+     SetColor(White);
+    End
+     Else SetColor(LightGray);
+    S:=AcFile[I];
+    If S[1]='*' Then S:='';
+    While Length(S)<9 do S:=S+' ';
+    OutTextXY(14,Y,S+Copy(AcName(I),1,40));
+   End;
+  { barre de defilement }
+  SetColor(DarkGray);
+  Rectangle(404,40,410,420);
+  SetFillStyle(SolidFill,LightGray);
+  L:=Round(380.0*Sel/MaxR(1.0,NAc-1.0));
+  Bar(405,40+L-3,409,40+L+3);
+  { fiche technique }
+  SetColor(LightCyan);
+  Rectangle(418,40,SCR_W-12,420);
+  DrawWrap(426,48,26,2,Sp.Name,Yellow);
+  PutText(426,76,Tr(CatMsg(Sp.Cat)),LightGreen);
+  PutText(426,98,Tr(D_ENG)+' : '+IntStr(Sp.NEng),White);
+  PutText(426,112,Tr(D_VMAX)+' : '+IntStr(Round(Sp.VMaxKmh))+' km/h',White);
+  PutText(426,126,Tr(D_MASS)+' : '+IntStr(Round(Sp.MTow))+' kg',White);
+  PutText(426,140,Tr(D_SPAN)+' : '+RealStr(Sp.Span,1)+' m',White);
+  PutText(426,154,Tr(D_LEN)+' : '+RealStr(Sp.Len,1)+' m',White);
+  If Sp.Year>0 Then PutText(426,168,Tr(D_YEAR)+' : '+IntStr(Sp.Year),White);
+  If Sp.Float Then PutText(426,182,'~~ '+Tr(T_WATER),LightCyan);
+  DrawWrap(426,208,26,10,Sp.Desc,LightGray);
+  SetColor(LightGreen);
+  OutTextXY((SCR_W-Length(Tr(D_SELHINT))*8) div 2,440,Tr(D_SELHINT));
+  Ch:=ReadKey;
+  If Ch=#0 Then Begin
+   Ch:=ReadKey;
+   Case Ord(Ch) of
+    72:If Sel>0 Then Dec(Sel);
+    80:If Sel<NAc-1 Then Inc(Sel);
+    73:Sel:=Sel-ROWS;
+    81:Sel:=Sel+ROWS;
+    71:Sel:=0;
+    79:Sel:=NAc-1;
+   End;
+   If Sel<0 Then Sel:=0;
+   If Sel>NAc-1 Then Sel:=NAc-1;
+  End
+   Else
+  Case Ch of
+   #13:Begin PickAircraft:=True; Done:=True; OptPlane:=Sel; End;
+   #27:Begin Done:=True; OptPlane:=Old; End;
+   Else Begin
+    { saisie d'une lettre : saute au premier modele correspondant }
+    For I:=1 to NAc do
+     If(AcFile[(Sel+I)mod NAc][1]=UpCase(Ch))and
+       (AcFile[Sel][1]<>'*')and(Done=False)Then Begin
+      Sel:=(Sel+I)mod NAc;
+      Done:=False;
+      Break;
+     End;
+   End;
+  End;
+ End;
+ LoadAircraft(OptPlane);
+End;
+
 { Menu principal : retourne 1 pour voler, 0 pour quitter }
 Function MainMenu:Integer;
 Var
@@ -3682,18 +4437,27 @@ Begin
   For I:=0 to 8 do Begin
    Y:=150+I*28;
    S:=OptionText(I);
-   SetTextStyle(DefaultFont,HorizDir,2);
+   If Length(S)*16>SCR_W-70 Then SetTextStyle(DefaultFont,HorizDir,1)
+                            Else SetTextStyle(DefaultFont,HorizDir,2);
    If I=Row Then Begin
     SetFillStyle(SolidFill,Yellow);
     Bar(30,Y-3,SCR_W-31,Y+19);
     SetColor(Black);
    End
     Else SetColor(White);
-   OutTextXY((SCR_W-Length(S)*16) div 2,Y,S);
+   If Length(S)*16>SCR_W-70 Then OutTextXY((SCR_W-Length(S)*8) div 2,Y+4,S)
+                            Else OutTextXY((SCR_W-Length(S)*16) div 2,Y,S);
   End;
   SetTextStyle(DefaultFont,HorizDir,1);
   SetFillStyle(SolidFill,Black);
-  Bar(0,462,SCR_W-1,479);
+  Bar(0,406,SCR_W-1,479);
+  If Row=0 Then Begin
+   SetColor(Yellow);
+   OutTextXY((SCR_W-Length(Tr(M_ACLIST))*8) div 2,416,Tr(M_ACLIST));
+   SetColor(LightGray);
+   OutTextXY((SCR_W-Length(Specs[SLOT_CUR].Desc)*8) div 2,432,
+             Specs[SLOT_CUR].Desc);
+  End;
   SetColor(LightGray);
   OutTextXY(6,466,Tr(M_NAVHINT));
   OutTextXY(SCR_W-6-Length(Tr(M_HELP))*8,466,Tr(M_HELP));
@@ -3705,6 +4469,14 @@ Begin
     80:Row:=(Row+1)mod 9;
     75:ChangeOption(Row,-1);
     77:ChangeOption(Row,1);
+    73:If Row=0 Then Begin
+        OptPlane:=(OptPlane+NAc-10)mod NAc;
+        LoadAircraft(OptPlane);
+       End;
+    81:If Row=0 Then Begin
+        OptPlane:=(OptPlane+10)mod NAc;
+        LoadAircraft(OptPlane);
+       End;
     59:ShowHelp;
    End;
   End
@@ -3713,6 +4485,7 @@ Begin
    #13:Begin
         If Row=8 Then Begin MainMenu:=0; Done:=True; End
         Else If Row=7 Then Begin MainMenu:=1; Done:=True; End
+        Else If Row=0 Then PickAircraft
         Else Begin
          ChangeOption(Row,1);
         End;
@@ -3781,7 +4554,7 @@ End;
 
 Procedure ToggleAP(Var F:TFlt);
 Begin
- If F.OnGround or F.Crashed Then Exit;
+ If F.OnGround or F.Crashed or(Specs[F.Spec].Cat='C')Then Exit;
  F.AP:=Not F.AP;
  If F.AP Then Begin
   F.APHdg:=Round(HeadingDeg(F.F)/5.0)*5.0;
@@ -3964,7 +4737,11 @@ BEGIN
  End;
  InitSpecs;
  InitWorld;
+ ScanAircraft;
  OptPlane:=0;
+ For Rc:=0 to NAc-1 do
+  If AcFile[Rc]='C172' Then OptPlane:=Rc;
+ LoadAircraft(OptPlane);
  OptAirport:=0;
  OptStart:=0;
  OptNight:=0;
