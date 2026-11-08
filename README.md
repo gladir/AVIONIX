@@ -87,6 +87,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de décoder les messages météorologiques aéronautiques METAR, SPECI et TAF (vent, visibilité, RVR, temps présent, nuages, température, pression, catégorie de vol).</td>
 	</tr>
 	<tr>
+		<td><b>NAV.PAS</b></td>
+		<td>Cette commande permet de calculer la distance et les caps du grand cercle entre deux points (aérodromes ou coordonnées), une route à plusieurs segments, un point d'arrivée, avec déclinaison magnétique et correction de vent.</td>
+	</tr>
+	<tr>
 		<td><b>OPENVSP.PAS</b></td>
 		<td>Cette commande permet de lancer un clone d'OpenVSP, un modeleur paramétrique de géométrie d'avions (ailes, fuselages, pods, hélices, conduits) avec vue 3D, analyses (géométrie calculée, masse et centrage, traînée parasite, aérodynamique) et exports STL/OBJ/CSV. Sous Turbo Pascal 7, la version allégée (LITE) est compilée en raison de la limite de 64 Ko de code.</td>
 	</tr>
@@ -109,6 +113,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 	<tr>
 		<td><b>TRAJECT.PAS</b></td>
 		<td>Cette commande permet d'effectuer la simulation de la trajectoire d'un avion.</td>
+	</tr>
+	<tr>
+		<td><b>VENT.PAS</b></td>
+		<td>Cette commande permet de résoudre le triangle des vents (cap à tenir, dérive, vitesse sol, vent mesuré, composantes du vent sur les pistes).</td>
 	</tr>
 </table>
 
