@@ -5091,6 +5091,439 @@ Begin
  End;
 End;
 { ------------------------------------------------------------------ }
+{ Acceleration materielle : DirectX / Direct3D 9 (Windows seulement)  }
+{                                                                    }
+{ Compile avec Free Pascal sous Windows (directive WINDOWS), le      }
+{ programme cherche d3d9.dll a l'execution (aucune unite ajoutee :   }
+{ les points d'entree sont declares ici). Si la carte video est      }
+{ significative, l'avion est dessine par le processeur graphique     }
+{ avec lissage matriel (multi-echantillonnage) en mode couleurs      }
+{ directes. Sinon, ou avec -nogpu, aucune API propre au systeme      }
+{ d'exploitation n'est utilisee.                                     }
+{ ------------------------------------------------------------------ }
+
+Var
+ GpuOn    : Boolean;       { rendu materiel de l'avion actif }
+ GpuName  : String;        { nom de la carte video }
+ GpuMsaa  : Integer;       { nombre d'echantillons de lissage }
+
+{$IFDEF FPC}
+{$IFDEF WINDOWS}
+Var
+ NoGpu    : Boolean;       { -nogpu : aucune API propre au systeme }
+ ForceGpu : Boolean;       { -gpu : accepte toute carte video }
+
+{$PACKRECORDS C}
+Const
+ D3D_SDK_VERSION = 32;
+ D3DFMT_A8R8G8B8 = 21;
+ D3DDEVTYPE_HAL  = 1;
+
+Type
+ TVtbl = Array[0..127] Of Pointer;
+ PVtbl = ^TVtbl;
+ PIntf = ^PVtbl;
+ { sommet transforme : X, Y en pixels, Z, 1/W, couleur ARGB }
+ TGVert = Record
+  X,Y,Z,W : Single;
+  C       : LongInt;
+ End;
+ TGVerts = Array[0..299999] Of TGVert;
+ PGVerts = ^TGVerts;
+ TGImg = Array[0..16777215] Of LongInt;
+ PGImg = ^TGImg;
+ TAdapterId = Record
+  Driver  : Array[0..511] Of Char;
+  Desc    : Array[0..511] Of Char;
+  DevName : Array[0..31] Of Char;
+  DrvLo,DrvHi : LongInt;
+  Vendor,Device,SubSys,Revision : LongInt;
+  Guid    : Array[0..15] Of Byte;
+  Whql    : LongInt;
+ End;
+ TPresent = Record
+  BBW,BBH,BBFmt,BBCount : LongInt;
+  MsType,MsQuality      : LongInt;
+  SwapEffect            : LongInt;
+  hWnd                  : PtrUInt;
+  Windowed              : LongInt;
+  AutoDepth,DepthFmt    : LongInt;
+  Flags,RefreshHz,Interval : LongInt;
+ End;
+ TLockRect = Record
+  Pitch : LongInt;
+  Bits  : Pointer;
+ End;
+ TRectL = Record
+  L,T,R,B : LongInt;
+ End;
+ TCapsBuf = Array[0..127] Of LongInt;
+{$PACKRECORDS DEFAULT}
+
+ { methodes COM (convention stdcall, This en premier parametre) }
+ TFnCreate9   = Function(Ver:LongWord):Pointer; stdcall;
+ TFnRelease   = Function(This:Pointer):LongWord; stdcall;
+ TFnAdId      = Function(This:Pointer;Ad,Fl:LongWord;
+                         Var Id:TAdapterId):LongInt; stdcall;
+ TFnMsCheck   = Function(This:Pointer;Ad,Dt,Fmt:LongWord;Win:LongInt;
+                         Ms:LongWord;Q:Pointer):LongInt; stdcall;
+ TFnCaps      = Function(This:Pointer;Ad,Dt:LongWord;
+                         Var Caps:TCapsBuf):LongInt; stdcall;
+ TFnCreateDev = Function(This:Pointer;Ad,Dt:LongWord;Wnd:PtrUInt;
+                         Beh:LongWord;Var Pp:TPresent;
+                         Var Dev:Pointer):LongInt; stdcall;
+ TFnMem       = Function(This:Pointer):LongWord; stdcall;
+ TFnCreateRT  = Function(This:Pointer;W,H,Fmt,Ms,Mq:LongWord;Lock:LongInt;
+                         Var Surf:Pointer;Sh:Pointer):LongInt; stdcall;
+ TFnGetRTData = Function(This:Pointer;Src,Dst:Pointer):LongInt; stdcall;
+ TFnStretch   = Function(This:Pointer;Src:Pointer;Sr:Pointer;Dst:Pointer;
+                         Dr:Pointer;Fl:LongWord):LongInt; stdcall;
+ TFnCreatePlain = Function(This:Pointer;W,H,Fmt,Pool:LongWord;
+                         Var Surf:Pointer;Sh:Pointer):LongInt; stdcall;
+ TFnSetRT     = Function(This:Pointer;Idx:LongWord;Surf:Pointer):LongInt;
+                         stdcall;
+ TFnVoid      = Function(This:Pointer):LongInt; stdcall;
+ TFnClear     = Function(This:Pointer;Cnt:LongWord;Rc:Pointer;Fl,Col:LongWord;
+                         Z:Single;St:LongWord):LongInt; stdcall;
+ TFnRState    = Function(This:Pointer;St,Val:LongWord):LongInt; stdcall;
+ TFnTexState  = Function(This:Pointer;Stg,Ty,Val:LongWord):LongInt; stdcall;
+ TFnFvf       = Function(This:Pointer;Fvf:LongWord):LongInt; stdcall;
+ TFnDrawUP    = Function(This:Pointer;Pt,Cnt:LongWord;Data:Pointer;
+                         Stride:LongWord):LongInt; stdcall;
+ TFnLock      = Function(This:Pointer;Var Lr:TLockRect;Rc:Pointer;
+                         Fl:LongWord):LongInt; stdcall;
+
+Function LoadLibraryA(Name:PChar):PtrUInt; stdcall;
+ external 'kernel32.dll' name 'LoadLibraryA';
+Function GetProcAddress(H:PtrUInt;Name:PChar):Pointer; stdcall;
+ external 'kernel32.dll' name 'GetProcAddress';
+Function FreeLibrary(H:PtrUInt):LongInt; stdcall;
+ external 'kernel32.dll' name 'FreeLibrary';
+Function GetDesktopWindow:PtrUInt; stdcall;
+ external 'user32.dll' name 'GetDesktopWindow';
+
+Var
+ GDll     : PtrUInt;
+ GD3D     : Pointer;     { IDirect3D9 }
+ GDev     : Pointer;     { IDirect3DDevice9 }
+ GRtMs    : Pointer;     { cible de rendu (multi-echantillonnee) }
+ GRtRes   : Pointer;     { cible de rendu simple }
+ GSys     : Pointer;     { surface en memoire centrale pour la lecture }
+ GVerts   : PGVerts;
+ GImg     : PGImg;       { copie de la zone de l'avion (GetImage) }
+ GNV      : LongInt;
+ GBlend   : Boolean;
+ GMnx,GMny,GMxx,GMxy : LongInt;
+ GRtW,GRtH : LongInt;
+
+Function GVt(O:Pointer;I:Integer):Pointer;
+Begin
+ GVt:=PIntf(O)^^[I];
+End;
+
+Procedure GRel(Var O:Pointer);
+Begin
+ If O<>Nil Then Begin
+  TFnRelease(GVt(O,2))(O);
+  O:=Nil;
+ End;
+End;
+
+{ Carte video significative : materielle (HAL), non virtuelle, shaders
+  2.0 ou plus, grandes textures ; seul le nom peut denoncer un pilote
+  logiciel }
+Function GpuSignificant(Vendor:LongInt;Const Name:String;
+                        PixelSh,MaxTex:LongInt):Boolean;
+Var
+ U:String;
+ I:Integer;
+Const
+ NB = 11;
+ Bad : Array[1..NB] Of String[14] = ('MICROSOFT','BASIC RENDER','SOFTWARE',
+  'SWIFTSHADER','LLVMPIPE','WARP','REMOTE','VMWARE','VIRTUALBOX',
+  'PARALLELS','GDI');
+Begin
+ GpuSignificant:=False;
+ If Vendor=$1414 Then Exit;
+ If(PixelSh shr 8)and 255<2 Then Exit;
+ If MaxTex<2048 Then Exit;
+ U:=UpStr(Name);
+ For I:=1 to NB do
+  If Pos(Bad[I],U)>0 Then Exit;
+ GpuSignificant:=True;
+End;
+
+Procedure GpuClose;
+Begin
+ GRel(GSys); GRel(GRtRes); GRel(GRtMs); GRel(GDev); GRel(GD3D);
+ If GVerts<>Nil Then Begin
+  FreeMem(GVerts,SizeOf(TGVerts));
+  GVerts:=Nil;
+ End;
+ If GImg<>Nil Then Begin
+  FreeMem(GImg,(GRtW*GRtH+3)*4);
+  GImg:=Nil;
+ End;
+ If GDll<>0 Then Begin
+  FreeLibrary(GDll);
+  GDll:=0;
+ End;
+ GpuOn:=False;
+End;
+
+{ Initialisation : Force=True (option -gpu) accepte toute carte }
+Procedure GpuInit(Force:Boolean);
+Var
+ Fn:Pointer;
+ Id:TAdapterId;
+ Caps:TCapsBuf;
+ Pp:TPresent;
+ I:Integer;
+ Beh:LongWord;
+ Cw:Word;
+ Okay:Boolean;
+ Mem:LongWord;
+ Ms:Integer;
+Begin
+ GpuOn:=False;
+ GpuName:='';
+ GpuMsaa:=0;
+ GDll:=0; GD3D:=Nil; GDev:=Nil; GRtMs:=Nil; GRtRes:=Nil; GSys:=Nil;
+ GVerts:=Nil; GImg:=Nil;
+ GDll:=LoadLibraryA('d3d9.dll');
+ If GDll=0 Then Exit;
+ Fn:=GetProcAddress(GDll,'Direct3DCreate9');
+ If Fn=Nil Then Begin GpuClose; Exit; End;
+ Cw:=Get8087CW;
+ GD3D:=TFnCreate9(Fn)(D3D_SDK_VERSION);
+ Set8087CW(Cw);
+ If GD3D=Nil Then Begin GpuClose; Exit; End;
+ FillChar(Id,SizeOf(Id),0);
+ If TFnAdId(GVt(GD3D,5))(GD3D,0,0,Id)<0 Then Begin GpuClose; Exit; End;
+ GpuName:='';
+ I:=0;
+ While(I<511)and(Id.Desc[I]<>#0)and(Length(GpuName)<40)do Begin
+  GpuName:=GpuName+Id.Desc[I];
+  Inc(I);
+ End;
+ FillChar(Caps,SizeOf(Caps),0);
+ If TFnCaps(GVt(GD3D,14))(GD3D,0,D3DDEVTYPE_HAL,Caps)<0 Then Begin
+  GpuClose; Exit;
+ End;
+ { D3DCAPS9 : MaxTextureWidth (octet 88), PixelShaderVersion (204) }
+ Okay:=GpuSignificant(Id.Vendor,GpuName,Caps[51],Caps[22]);
+ If(Not Okay)and(Not Force)Then Begin GpuClose; Exit; End;
+
+ { peripherique hors ecran : fenetre du bureau, fenetre non plein ecran }
+ FillChar(Pp,SizeOf(Pp),0);
+ Pp.Windowed:=1;
+ Pp.SwapEffect:=1;
+ Pp.BBCount:=1;
+ Pp.hWnd:=GetDesktopWindow;
+ Beh:=$20 or $02;  { logiciel pour les sommets, FPU preservee }
+ Cw:=Get8087CW;
+ I:=TFnCreateDev(GVt(GD3D,16))(GD3D,0,D3DDEVTYPE_HAL,Pp.hWnd,Beh,Pp,GDev);
+ Set8087CW(Cw);
+ If(I<0)or(GDev=Nil)Then Begin GpuClose; Exit; End;
+ If Not Force Then Begin
+  Mem:=TFnMem(GVt(GDev,4))(GDev);
+  If Mem<256*1024*1024 Then Begin GpuClose; Exit; End;
+ End;
+
+ { cibles de rendu : lissage 4x ou 2x si la carte le permet }
+ GRtW:=ScrW; GRtH:=ScrH;
+ Ms:=0;
+ If TFnMsCheck(GVt(GD3D,11))(GD3D,0,D3DDEVTYPE_HAL,D3DFMT_A8R8G8B8,1,4,
+                             Nil)>=0 Then Ms:=4 Else
+ If TFnMsCheck(GVt(GD3D,11))(GD3D,0,D3DDEVTYPE_HAL,D3DFMT_A8R8G8B8,1,2,
+                             Nil)>=0 Then Ms:=2;
+ If TFnCreateRT(GVt(GDev,28))(GDev,GRtW,GRtH,D3DFMT_A8R8G8B8,Ms,0,0,GRtMs,
+                              Nil)<0 Then Begin
+  Ms:=0;
+  If TFnCreateRT(GVt(GDev,28))(GDev,GRtW,GRtH,D3DFMT_A8R8G8B8,0,0,0,GRtMs,
+                               Nil)<0 Then Begin GpuClose; Exit; End;
+ End;
+ If Ms>0 Then Begin
+  If TFnCreateRT(GVt(GDev,28))(GDev,GRtW,GRtH,D3DFMT_A8R8G8B8,0,0,0,GRtRes,
+                               Nil)<0 Then Begin GpuClose; Exit; End;
+ End;
+ If TFnCreatePlain(GVt(GDev,36))(GDev,GRtW,GRtH,D3DFMT_A8R8G8B8,2,GSys,
+                                 Nil)<0 Then Begin GpuClose; Exit; End;
+ GetMem(GVerts,SizeOf(TGVerts));
+ GetMem(GImg,(GRtW*GRtH+3)*4);
+ GpuMsaa:=Ms;
+ GpuOn:=True;
+End;
+
+Procedure GpuState(St,Val:LongWord);
+Begin
+ TFnRState(GVt(GDev,57))(GDev,St,Val);
+End;
+
+{ Debut d'une image : fond transparent, etats pour des polygones plats }
+Function GpuBegin:Boolean;
+Var
+ Cw:Word;
+ Okay:Boolean;
+Begin
+ GpuBegin:=False;
+ If Not GpuOn Then Exit;
+ Cw:=Get8087CW;
+ Okay:=(TFnSetRT(GVt(GDev,37))(GDev,0,GRtMs)>=0)and
+       (TFnClear(GVt(GDev,43))(GDev,0,Nil,1,0,1.0,0)>=0)and
+       (TFnVoid(GVt(GDev,41))(GDev)>=0);
+ Set8087CW(Cw);
+ If Not Okay Then Exit;
+ GpuState(7,0);      { pas de tampon de profondeur (tri du peintre) }
+ GpuState(22,1);     { pas d'elimination de faces }
+ GpuState(137,0);    { pas d'eclairage : sommets deja colores }
+ GpuState(27,0);
+ GpuState(206,1);    { alpha separe : cible pre-multipliee }
+ GpuState(207,2);
+ GpuState(208,6);
+ TFnTexState(GVt(GDev,67))(GDev,0,1,2);
+ TFnTexState(GVt(GDev,67))(GDev,0,2,0);
+ TFnTexState(GVt(GDev,67))(GDev,0,4,2);
+ TFnTexState(GVt(GDev,67))(GDev,0,5,0);
+ TFnFvf(GVt(GDev,89))(GDev,$44);
+ GNV:=0;
+ GBlend:=False;
+ GMnx:=30000; GMny:=30000; GMxx:=-30000; GMxy:=-30000;
+ GpuBegin:=True;
+End;
+
+Procedure GpuFlush;
+Begin
+ If GNV>=3 Then
+  TFnDrawUP(GVt(GDev,83))(GDev,4,GNV div 3,GVerts,SizeOf(TGVert));
+ GNV:=0;
+End;
+
+{ Ajoute un triangle ; Alpha=255 : opaque, sinon fondu (disque d'helice) }
+Procedure GpuTri(X1,Y1,X2,Y2,X3,Y3:LongInt;Rgb:LongInt;Alpha:Integer);
+Var
+ Bl:Boolean;
+ Col:LongInt;
+Begin
+ Bl:=Alpha<255;
+ If(Bl<>GBlend)or(GNV+3>=High(TGVerts))Then Begin
+  GpuFlush;
+  If Bl<>GBlend Then Begin
+   GpuState(27,Ord(Bl));
+   GpuState(19,5);
+   GpuState(20,6);
+   GBlend:=Bl;
+  End;
+ End;
+ Col:=(LongInt(Alpha)shl 24)or(Rgb and $FFFFFF);
+ GVerts^[GNV].X:=X1-0.5; GVerts^[GNV].Y:=Y1-0.5;
+ GVerts^[GNV].Z:=0.0;    GVerts^[GNV].W:=1.0; GVerts^[GNV].C:=Col;
+ GVerts^[GNV+1].X:=X2-0.5; GVerts^[GNV+1].Y:=Y2-0.5;
+ GVerts^[GNV+1].Z:=0.0;    GVerts^[GNV+1].W:=1.0; GVerts^[GNV+1].C:=Col;
+ GVerts^[GNV+2].X:=X3-0.5; GVerts^[GNV+2].Y:=Y3-0.5;
+ GVerts^[GNV+2].Z:=0.0;    GVerts^[GNV+2].W:=1.0; GVerts^[GNV+2].C:=Col;
+ Inc(GNV,3);
+ If X1<GMnx Then GMnx:=X1; If X1>GMxx Then GMxx:=X1;
+ If X2<GMnx Then GMnx:=X2; If X2>GMxx Then GMxx:=X2;
+ If X3<GMnx Then GMnx:=X3; If X3>GMxx Then GMxx:=X3;
+ If Y1<GMny Then GMny:=Y1; If Y1>GMxy Then GMxy:=Y1;
+ If Y2<GMny Then GMny:=Y2; If Y2>GMxy Then GMxy:=Y2;
+ If Y3<GMny Then GMny:=Y3; If Y3>GMxy Then GMxy:=Y3;
+End;
+
+{ Fin d'image : resolution du lissage, lecture, puis recopie sur l'ecran
+  (les pixels partiellement couverts sont fondus avec le decor) }
+Function GpuEnd:Boolean;
+Var
+ Cw:Word;
+ Rc:TRectL;
+ Lr:TLockRect;
+ Src:Pointer;
+ X,Y,X1,Y1,X2,Y2,A,R,G,B,W,K:LongInt;
+ P,Q:LongInt;
+ Row:PtrUInt;
+ Okay:Boolean;
+Begin
+ GpuEnd:=False;
+ If Not GpuOn Then Exit;
+ Cw:=Get8087CW;
+ GpuFlush;
+ Okay:=TFnVoid(GVt(GDev,42))(GDev)>=0;
+ If Okay Then Begin
+  Src:=GRtMs;
+  If GRtRes<>Nil Then Begin
+   Okay:=TFnStretch(GVt(GDev,34))(GDev,GRtMs,Nil,GRtRes,Nil,0)>=0;
+   Src:=GRtRes;
+  End;
+ End;
+ If Okay Then Okay:=TFnGetRTData(GVt(GDev,32))(GDev,Src,GSys)>=0;
+ Set8087CW(Cw);
+ If Not Okay Then Exit;
+ X1:=GMnx; Y1:=GMny; X2:=GMxx; Y2:=GMxy;
+ If X1<VX1 Then X1:=VX1; If Y1<VY1 Then Y1:=VY1;
+ If X2>VX2 Then X2:=VX2; If Y2>VY2 Then Y2:=VY2;
+ If X2>=GRtW Then X2:=GRtW-1;
+ If Y2>=GRtH Then Y2:=GRtH-1;
+ If X1<0 Then X1:=0; If Y1<0 Then Y1:=0;
+ If(X2<X1)or(Y2<Y1)Then Begin GpuEnd:=True; Exit; End;
+ Rc.L:=X1; Rc.T:=Y1; Rc.R:=X2+1; Rc.B:=Y2+1;
+ If TFnLock(GVt(GSys,13))(GSys,Lr,@Rc,$10)<0 Then Exit;
+ { une seule lecture et une seule ecriture de l'ecran (GetImage /
+   PutImage) : bien plus rapide qu'un PutPixel par point }
+ W:=X2-X1+1;
+ GetImage(X1,Y1,X2,Y2,GImg^);
+ For Y:=Y1 to Y2 do Begin
+  Row:=PtrUInt(Lr.Bits)+PtrUInt(Y-Y1)*PtrUInt(Lr.Pitch);
+  K:=3+(Y-Y1)*W;
+  For X:=X1 to X2 do Begin
+   P:=PLongInt(Row+PtrUInt(X-X1)*4)^;
+   A:=(P shr 24)and 255;
+   If A=255 Then GImg^[K]:=P and $FFFFFF Else
+   If A>0 Then Begin
+    { pixel partiellement couvert : couleur pre-multipliee + decor }
+    Q:=GImg^[K];
+    R:=((P shr 16)and 255)+((Q shr 16)and 255)*(255-A)div 255;
+    G:=((P shr 8)and 255)+((Q shr 8)and 255)*(255-A)div 255;
+    B:=(P and 255)+(Q and 255)*(255-A)div 255;
+    If R>255 Then R:=255;
+    If G>255 Then G:=255;
+    If B>255 Then B:=255;
+    GImg^[K]:=(R shl 16)or(G shl 8)or B;
+   End;
+   Inc(K);
+  End;
+ End;
+ PutImage(X1,Y1,GImg^,0);
+ TFnVoid(GVt(GSys,14))(GSys);
+ GpuEnd:=True;
+End;
+{$ENDIF}
+{$ENDIF}
+
+{ Options -nogpu (Force=False) et -gpu (Force=True) ; sans effet hors de
+  Windows / Free Pascal }
+Procedure GpuOption(Force:Boolean);
+Begin
+ {$IFDEF FPC}
+ {$IFDEF WINDOWS}
+ If Force Then ForceGpu:=True Else NoGpu:=True;
+ {$ENDIF}
+ {$ENDIF}
+End;
+
+Procedure GpuReset;
+Begin
+ GpuOn:=False;
+ GpuName:='';
+ GpuMsaa:=0;
+ {$IFDEF FPC}
+ {$IFDEF WINDOWS}
+ NoGpu:=False;
+ ForceGpu:=False;
+ {$ENDIF}
+ {$ENDIF}
+End;
+{ ------------------------------------------------------------------ }
 { Affichage du modele : ombrage, helices, flammes, feux                }
 { ------------------------------------------------------------------ }
 
@@ -5346,6 +5779,11 @@ Var
  Col:LongInt;
  A,B,Cc,D:Word;
  Spin,GearUp,FlameBack:Boolean;
+ {$IFDEF FPC}
+ {$IFDEF WINDOWS}
+ UseGpu:Boolean;
+ {$ENDIF}
+ {$ENDIF}
  Pts:Array[0..3] Of PointType;
  Mnx,Mxx,Mny,Mxy:Integer;
  Q,W:TVec;
@@ -5489,7 +5927,14 @@ Begin
  End;
  MSortQuads(N);
 
- { dessin, du plus lointain au plus proche }
+ { dessin, du plus lointain au plus proche (processeur graphique si
+   disponible : lissage materiel, sinon remplissage logiciel) }
+ {$IFDEF FPC}
+ {$IFDEF WINDOWS}
+ UseGpu:=GpuOn and TrueMode;
+ If UseGpu Then UseGpu:=GpuBegin;
+ {$ENDIF}
+ {$ENDIF}
  For K:=0 to N-1 do Begin
   I:=MOrd^[K];
   A:=MQ^[I].A; B:=MQ^[I].B; Cc:=MQ^[I].C; D:=MQ^[I].D;
@@ -5499,9 +5944,17 @@ Begin
   Pts[3].X:=MSX^[D]; Pts[3].Y:=MSY^[D];
   If MQ^[I].F=5 Then Begin
    {$IFDEF FPC}
-   If TrueMode Then
+   If TrueMode Then Begin
+    Col:=(40 shl 16)or(40 shl 8)or 44;
+    {$IFDEF WINDOWS}
+    If UseGpu Then
+     GpuTri(Pts[0].X,Pts[0].Y,Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y,Col,
+            Round((0.34+0.12*Spool)*255.0))
+    Else
+    {$ENDIF}
     BlendTri(Pts[0].X,Pts[0].Y,Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y,
-             (40 shl 16)or(40 shl 8)or 44,0.34+0.12*Spool)
+             Col,0.34+0.12*Spool);
+   End
    Else
    {$ENDIF}
    Begin
@@ -5511,11 +5964,31 @@ Begin
    End;
   End
    Else Begin
-    SetFillStyle(SolidFill,MCq^[I]);
-    SetColor(MCq^[I]);
-    If(A=D)Then FillPoly(3,Pts) Else FillPoly(4,Pts);
+    {$IFDEF FPC}
+    {$IFDEF WINDOWS}
+    If UseGpu Then Begin
+     GpuTri(Pts[0].X,Pts[0].Y,Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y,
+            MCq^[I],255);
+     If A<>D Then
+      GpuTri(Pts[0].X,Pts[0].Y,Pts[2].X,Pts[2].Y,Pts[3].X,Pts[3].Y,
+             MCq^[I],255);
+    End
+     Else
+    {$ENDIF}
+    {$ENDIF}
+    Begin
+     SetFillStyle(SolidFill,MCq^[I]);
+     SetColor(MCq^[I]);
+     If(A=D)Then FillPoly(3,Pts) Else FillPoly(4,Pts);
+    End;
    End;
  End;
+ {$IFDEF FPC}
+ {$IFDEF WINDOWS}
+ If UseGpu Then
+  If Not GpuEnd Then GpuOn:=False;
+ {$ENDIF}
+ {$ENDIF}
  SetFillStyle(SolidFill,White);
 
  If FlameBack Then MFlames(C,P,F,R,U,Flame,IsNight);
@@ -7481,6 +7954,11 @@ Begin
    OutTextXY((SCR_W-Length(Specs[SLOT_CUR].Desc)*8) div 2,438,
              Specs[SLOT_CUR].Desc);
   End;
+  If GpuOn Then Begin
+   SetColor(LightGreen);
+   OutTextXY(6,452,'GPU : '+GpuName+' (Direct3D 9, x'+
+             Chr(48+GpuMsaa)+')');
+  End;
   SetColor(LightGray);
   OutTextXY(6,466,Tr(M_NAVHINT));
   OutTextXY(SCR_W-6-Length(Tr(M_HELP))*8,466,Tr(M_HELP));
@@ -7743,7 +8221,8 @@ End;
 Var
  Rc:Integer;
 
-{ Options -maxscreen et -maxcolors (sans effet sous Turbo Pascal) }
+{ Options -maxscreen, -maxcolors, -nogpu et -gpu (sans effet sous
+  Turbo Pascal) }
 Procedure ParseCommandLine;
 Var
  I:Integer;
@@ -7751,10 +8230,13 @@ Var
 Begin
  MaxScreen:=False;
  MaxColors:=False;
+ GpuReset;
  For I:=1 to ParamCount do Begin
   Arg:=UpStr(ParamStr(I));
   If(Arg='-MAXSCREEN')or(Arg='/MAXSCREEN')Then MaxScreen:=True Else
-  If(Arg='-MAXCOLORS')or(Arg='/MAXCOLORS')Then MaxColors:=True;
+  If(Arg='-MAXCOLORS')or(Arg='/MAXCOLORS')Then MaxColors:=True Else
+  If(Arg='-NOGPU')or(Arg='/NOGPU')Then GpuOption(False) Else
+  If(Arg='-GPU')or(Arg='/GPU')Then GpuOption(True);
  End;
 End;
 
@@ -7782,16 +8264,25 @@ BEGIN
   WriteLn('FLIGHT - Cette commande permet de lancer un simulateur de vol ',
           '(clone de Flight Simulator).');
   WriteLn;
-  WriteLn('Syntaxe : FLIGHT [-maxscreen] [-maxcolors]');
+  WriteLn('Syntaxe : FLIGHT [-maxscreen] [-maxcolors] [-nogpu] [-gpu]');
   WriteLn('          FLIGHT /?');
   WriteLn;
   WriteLn('  -maxscreen   Utilise la r',#130,'solution maximale disponible.');
   WriteLn('  -maxcolors   Utilise le nombre maximal de couleurs ',
           '(couleurs vraies).');
+  WriteLn('  -nogpu       N''utilise pas DirectX / Direct3D (Windows) : ',
+          'rendu logiciel.');
+  WriteLn('  -gpu         Force Direct3D m',#136,'me si la carte vid',#130,
+          'o n''est pas jug',#130,'e');
+  WriteLn('               significative (Windows, Free Pascal 32 bits).');
   WriteLn('  /?           Affiche cette aide et quitte.');
   WriteLn;
-  WriteLn('Les options -maxscreen et -maxcolors ne sont disponibles que ',
-          'sous Free Pascal.');
+  WriteLn('Les options -maxscreen, -maxcolors, -nogpu et -gpu ne sont ',
+          'disponibles que sous Free Pascal.');
+  WriteLn('Sous Windows, Direct3D 9 est utilis',#130,' automatiquement avec ',
+          '-maxcolors si la');
+  WriteLn('carte vid',#130,'o est significative (avion liss',#130,' par le ',
+          'processeur graphique).');
   WriteLn(' LANGUAGE=EN, GR, SP, IT, ALB, PT, SE, DK ou JP  Variable ',
           'd''environnement');
   WriteLn('   pour choisir la langue (fran',#135,'ais par d',#130,'faut).');
@@ -7816,10 +8307,20 @@ BEGIN
  MsgTime:=0.0;
  SoundOn:=False;
  InitGraphicsMode;
+ {$IFDEF FPC}
+  {$IFDEF WINDOWS}
+   If TrueMode and(Not NoGpu)Then GpuInit(ForceGpu);
+  {$ENDIF}
+ {$ENDIF}
  Repeat
   If MainMenu=0 Then Rc:=2
                 Else Rc:=FlyLoop;
  Until Rc=2;
  NoSound;
+ {$IFDEF FPC}
+  {$IFDEF WINDOWS}
+   GpuClose;
+  {$ENDIF}
+ {$ENDIF}
  CloseGraph;
 END.
