@@ -1814,8 +1814,17 @@ Const
  MM_GEOM = 16;
  MM_SECT = 4;
  MM_STAT = 9;
+{$IFDEF FPC}
+ MM_VERT = 14000;
+ MM_QUAD = 16000;
+ MM_BV   = 6000;
+{$ELSE}
  MM_VERT = 3600;
  MM_QUAD = 4200;
+ MM_BV   = 1200;
+{$ENDIF}
+ MM_INST = 24;
+ MM_NOZ  = 10;
  MM_RNV  = 48;
  TWOPI   = 6.28318530717959;
  DEGR    = 0.0174532925199433;
@@ -1866,7 +1875,25 @@ Type
   C, X0, Y0, Z0, Tw, Th, Cm, A, B, D, E, F : Real;
  End;
 
- TMMat = Array[0..2,0..2] Of Real;
+TMMat = Array[0..2,0..2] Of Real;
+
+ TMNorm = Record
+  X, Y, Z : Integer;      { somme des normales des faces voisines }
+ End;
+ TMNormArr = Array[0..MM_VERT-1] Of TMNorm;
+ PMNormArr = ^TMNormArr;
+ TMByteArr = Array[0..MM_VERT-1] Of Byte;
+ PMByteArr = ^TMByteArr;
+
+ { Axe d'une helice (repere de l'avion, millimetres) }
+ TMInst = Record
+  CX, CY, CZ, AX, AY, AZ : Real;
+ End;
+
+ { Tuyere : position de sortie, direction de l'echappement, rayon }
+ TMNoz = Record
+  X, Y, Z, DX, DY, DZ, R : Real;
+ End;
 
 Var
  MGeom   : PMGeomArr;
@@ -1878,6 +1905,7 @@ Var
  MSZ     : PMZArr;
  MOrd    : PMWordArr;
  MKey    : PMLongArr;
+ MCq     : PMLongArr;         { couleur calculee de chaque face }
  MGR     : Array[0..MM_GEOM-1] Of TMMat;
  MGT     : Array[0..MM_GEOM-1,0..2] Of Real;
  MGear   : Array[0..MM_GEOM-1] Of Boolean;
@@ -1888,6 +1916,18 @@ Var
  MReady  : Boolean;
  MCol2   : Integer;
  MRing   : TMRing;
+ MVA     : PMVertArr;         { sommets animes (pales en rotation) }
+ MVN     : PMNormArr;         { normales lissees par sommet }
+ MVB     : PMByteArr;         { sommet de pale : instance d'helice + 1 }
+ MInst   : Array[0..MM_INST-1] Of TMInst;
+ MNInst  : Integer;
+ MNoz    : Array[0..MM_NOZ-1] Of TMNoz;
+ MNNoz   : Integer;
+ MBVIdx  : Array[0..MM_BV-1] Of Word;
+ MNBV    : Integer;
+ MPhase  : Real;
+ MLtL, MLtR, MLtT : TMVert;   { feux : bouts d'ailes et derive }
+ MCurInst : Integer;
  MMinZ, MBellyZ, MMinX, MMaxX, MMaxY : LongInt;
 
 { ----- utilitaires ----- }
@@ -1923,6 +1963,10 @@ Begin
  New(MSZ);
  New(MOrd);
  New(MKey);
+ New(MCq);
+ New(MVA);
+ New(MVN);
+ New(MVB);
  MNG:=0; MNV:=0; MNQ:=0;
  MReady:=False;
 End;
@@ -2193,37 +2237,42 @@ End;
 
 Function MWingSub:Integer;
 Begin
- Case MRes of 0:MWingSub:=2; 1:MWingSub:=3; Else MWingSub:=4; End;
+ Case MRes of 0:MWingSub:=2; 1:MWingSub:=3;
+  2:MWingSub:=4; Else MWingSub:=6; End;
 End;
 
 Function MWingNV:Integer;
 Begin
- Case MRes of 0:MWingNV:=12; 1:MWingNV:=16; Else MWingNV:=24; End;
+ Case MRes of 0:MWingNV:=12; 1:MWingNV:=16;
+  2:MWingNV:=24; Else MWingNV:=32; End;
 End;
 
 Function MRevNU:Integer;
 Begin
- Case MRes of 0:MRevNU:=12; 1:MRevNU:=18; Else MRevNU:=28; End;
+ Case MRes of 0:MRevNU:=12; 1:MRevNU:=18; 2:MRevNU:=28; Else MRevNU:=40; End;
 End;
 
 Function MRevNV:Integer;
 Begin
- Case MRes of 0:MRevNV:=8; 1:MRevNV:=12; Else MRevNV:=16; End;
+ Case MRes of 0:MRevNV:=8; 1:MRevNV:=12; 2:MRevNV:=16; Else MRevNV:=24; End;
 End;
 
 Function MBladeNU:Integer;
 Begin
- Case MRes of 0:MBladeNU:=4; 1:MBladeNU:=6; Else MBladeNU:=8; End;
+ Case MRes of 0:MBladeNU:=4; 1:MBladeNU:=6;
+  2:MBladeNU:=8; Else MBladeNU:=12; End;
 End;
 
 Function MSmallNU:Integer;
 Begin
- Case MRes of 0:MSmallNU:=6; 1:MSmallNU:=8; Else MSmallNU:=12; End;
+ Case MRes of 0:MSmallNU:=6; 1:MSmallNU:=8;
+  2:MSmallNU:=12; Else MSmallNU:=16; End;
 End;
 
 Function MDuctNU:Integer;
 Begin
- Case MRes of 0:MDuctNU:=10; 1:MDuctNU:=14; Else MDuctNU:=20; End;
+ Case MRes of 0:MDuctNU:=10; 1:MDuctNU:=14;
+  2:MDuctNU:=20; Else MDuctNU:=28; End;
 End;
 
 Function MHasSpin(Var G:TMGeom):Boolean;
@@ -2484,7 +2533,8 @@ Var
  Cen:Array[0..63] Of TVec;
  R1,R2,R3,Rx,Ry,Rz:Real;
  Ax,Ay,Az,Bx,By,Bz,Cx,Cy,Cz:Real;
- Q0:Integer;
+ Q0,V0,Inst:Integer;
+ Rr:Real;
 Begin
  NBase:=MBaseParts(MGeom^[GI]);
  If NBase=0 Then Exit;
@@ -2494,6 +2544,7 @@ Begin
  If(MNV+NU*NVv+11>MM_VERT)or(MNQ+(NU-1)*NVv+2*NVv+8>MM_QUAD)Then Exit;
  If NU>64 Then Exit;
  Base:=MNV;
+ V0:=MNV;
  For I:=0 to NU-1 do Begin
   MPrepRing(MGeom^[GI],BP,I,NU);
   Sx:=0.0; Sy:=0.0; Sz:=0.0;
@@ -2510,6 +2561,20 @@ Begin
  End;
  Fb:=0;
  Q0:=MNQ;
+ { helice : instance (centre et axe) partagee par les pales }
+ If(MGeom^[GI].Kind=3)and(BP=0)and(MNInst<MM_INST)Then Begin
+  MToBody(GI,Mir,0.0,0.0,0.0,R1,R2,R3);
+  MInst[MNInst].CX:=R1*1000.0; MInst[MNInst].CY:=R2*1000.0;
+  MInst[MNInst].CZ:=R3*1000.0;
+  MToBody(GI,Mir,1.0,0.0,0.0,Cx,Cy,Cz);
+  Ax:=Cx-R1; Ay:=Cy-R2; Az:=Cz-R3;
+  Rr:=Sqrt(Ax*Ax+Ay*Ay+Az*Az);
+  If Rr<1E-6 Then Rr:=1.0;
+  MInst[MNInst].AX:=Ax/Rr; MInst[MNInst].AY:=Ay/Rr;
+  MInst[MNInst].AZ:=Az/Rr;
+  MCurInst:=MNInst;
+  Inc(MNInst);
+ End;
  If MGeom^[GI].Kind=4 Then Fb:=3;
  If(MGeom^[GI].Kind=3)and(BP<Round(MGeom^[GI].NBlade))Then Fb:=6;
  If(MGeom^[GI].Kind=3)and(BP>=Round(MGeom^[GI].NBlade))Then Fb:=7;
@@ -2522,6 +2587,29 @@ Begin
    MAddQuad(Base+I*NVv+J,Base+I*NVv+J1,Base+(I+1)*NVv+J1,
             Base+(I+1)*NVv+J,GI,Fb,False,Rx,Ry,Rz);
   End;
+ End;
+ If(MGeom^[GI].Kind=3)and(BP<Round(MGeom^[GI].NBlade))and(MNInst>0)Then
+  For I:=V0 to MNV-1 do
+   If MNBV<MM_BV Then Begin
+    MBVIdx[MNBV]:=I;
+    MVB^[I]:=MCurInst+1;
+    Inc(MNBV);
+   End;
+ { tuyere : on garde la sortie et la direction du jet }
+ If(Copy(MGeom^[GI].Name,1,6)='Tuyere')and(MGeom^[GI].Kind=2)and
+   (MNNoz<MM_NOZ)and(NU>=3)Then Begin
+  MNoz[MNNoz].X:=Cen[NU-1].X; MNoz[MNNoz].Y:=Cen[NU-1].Y;
+  MNoz[MNNoz].Z:=Cen[NU-1].Z;
+  Ax:=Cen[NU-1].X-Cen[NU-2].X;
+  Ay:=Cen[NU-1].Y-Cen[NU-2].Y;
+  Az:=Cen[NU-1].Z-Cen[NU-2].Z;
+  Rr:=Sqrt(Ax*Ax+Ay*Ay+Az*Az);
+  If Rr<1E-6 Then Rr:=1.0;
+  MNoz[MNNoz].DX:=Ax/Rr; MNoz[MNNoz].DY:=Ay/Rr; MNoz[MNNoz].DZ:=Az/Rr;
+  MNoz[MNNoz].R:=Sqrt(Sqr(MV^[Base+(NU-1)*NVv].X-Cen[NU-1].X)+
+                      Sqr(MV^[Base+(NU-1)*NVv].Y-Cen[NU-1].Y)+
+                      Sqr(MV^[Base+(NU-1)*NVv].Z-Cen[NU-1].Z));
+  Inc(MNNoz);
  End;
  { orientation de la surface : la somme c.n est positive si les
    normales sont vers l'exterieur (theoreme de la divergence) }
@@ -2617,9 +2705,10 @@ Procedure MdlBuild(Hi,C1,C2:Integer;Var Sp:TSpec);
 Var
  G,P,I,Vn,Qn,K,Best:Integer;
  Mx,Zc,Xc,Z:Real;
- Mi:Integer;
+ Mi,Best2:Integer;
 Begin
  MRes:=Hi;
+ If MRes>3 Then MRes:=3;
  MCol2:=C2;
  { reference : quart de corde de l'aile principale }
  Best:=-1; Mx:=0.0;
@@ -2629,6 +2718,7 @@ Begin
     Mx:=MGeom^[G].RootChord*MGeom^[G].SSpan[1];
     Best:=G;
    End;
+ Best2:=Best;
  If Best>=0 Then
   MXcg:=MGeom^[Best].X+0.3*MGeom^[Best].RootChord+
         0.25*MGeom^[Best].SSpan[1]*Tan(MGeom^[Best].SSweep[1]*DEGR)
@@ -2645,9 +2735,27 @@ Begin
   Dec(MRes);
   MCount(Vn,Qn);
  End;
- MNV:=0; MNQ:=0;
+ MNV:=0; MNQ:=0; MNInst:=0; MNNoz:=0; MNBV:=0; MCurInst:=0;
+ FillChar(MVB^,SizeOf(MVB^),0);
  For G:=0 to MNG-1 do
   For P:=0 to MParts(MGeom^[G])-1 do MAddPart(G,P);
+ { normales lissees : somme des normales des faces autour de chaque sommet }
+ FillChar(MVN^,SizeOf(MVN^),0);
+ For I:=0 to MNQ-1 do
+  If MQ^[I].F<>5 Then
+   For K:=0 to 3 do Begin
+    Case K of
+     0:Mi:=MQ^[I].A;
+     1:Mi:=MQ^[I].B;
+     2:Mi:=MQ^[I].C;
+     Else Mi:=MQ^[I].D;
+    End;
+    If(K<3)or(MQ^[I].D<>MQ^[I].A)Then Begin
+     MVN^[Mi].X:=MVN^[Mi].X+MQ^[I].NX;
+     MVN^[Mi].Y:=MVN^[Mi].Y+MQ^[I].NY;
+     MVN^[Mi].Z:=MVN^[Mi].Z+MQ^[I].NZ;
+    End;
+   End;
  { dimensions, boites englobantes par geometrie }
  For G:=0 to MNG-1 do Begin
   MBox[G,0]:=2000000000; MBox[G,1]:=-2000000000;
@@ -2690,219 +2798,28 @@ Begin
   Sp.EyeF:=(MBox[Best,0]+0.3*(MBox[Best,1]-MBox[Best,0]))/1000.0;
   Sp.EyeU:=(MBox[Best,4]+0.6*(MBox[Best,5]-MBox[Best,4]))/1000.0;
  End;
- MReady:=(MNQ>0);
-End;
-
-{ ----- affichage ----- }
-
-{ Nuance d'une couleur de base : Lvl 0 (eclaire) a 4 (ombre).
-  Les couleurs 5 et 13 sont redefinies en gris clair et gris moyen
-  par InitPalette, ce qui donne cinq tons de gris. }
-Function MShade(Base,Lvl:Integer):Integer;
-Begin
- Case Base of
-  15:Case Lvl of 0:MShade:=15; 1:MShade:=5; 2:MShade:=7; 3:MShade:=13;
-      Else MShade:=8; End;
-  7:Case Lvl of 0:MShade:=5; 1:MShade:=7; 2:MShade:=7; 3:MShade:=13;
-      Else MShade:=8; End;
-  8:Case Lvl of 0:MShade:=7; 1:MShade:=13; 2:MShade:=8; 3:MShade:=8;
-      Else MShade:=0; End;
-  12:Case Lvl of 0:MShade:=12; 1:MShade:=12; 2:MShade:=4; 3:MShade:=4;
-      Else MShade:=0; End;
-  4:Case Lvl of 0:MShade:=12; 1:MShade:=4; 2:MShade:=4; 3:MShade:=4;
-      Else MShade:=0; End;
-  9:Case Lvl of 0:MShade:=9; 1:MShade:=9; 2:MShade:=1; 3:MShade:=1;
-      Else MShade:=0; End;
-  1:Case Lvl of 0:MShade:=9; 1:MShade:=1; 2:MShade:=1; 3:MShade:=1;
-      Else MShade:=0; End;
-  14:Case Lvl of 0:MShade:=14; 1:MShade:=14; 2:MShade:=6; 3:MShade:=6;
-      Else MShade:=6; End;
-  6:Case Lvl of 0:MShade:=6; 1:MShade:=6; 2:MShade:=6; 3:MShade:=8;
-      Else MShade:=8; End;
-  10:Case Lvl of 0:MShade:=10; 1:MShade:=10; 2:MShade:=2; 3:MShade:=2;
-      Else MShade:=0; End;
-  2:Case Lvl of 0:MShade:=10; 1:MShade:=2; 2:MShade:=2; 3:MShade:=2;
-      Else MShade:=0; End;
-  11:Case Lvl of 0:MShade:=11; 1:MShade:=11; 2:MShade:=3; 3:MShade:=3;
-      Else MShade:=1; End;
-  3:Case Lvl of 0:MShade:=11; 1:MShade:=3; 2:MShade:=3; 3:MShade:=1;
-      Else MShade:=1; End;
-  Else Case Lvl of 0:MShade:=Base; 1:MShade:=Base; 2:MShade:=DarkOf(Base);
-      Else MShade:=0; End;
- End;
-End;
-
-{$IFDEF FPC}
-{ Ombrage continu en couleurs directes : teinte RGB de l'avion modulee
-  par l'eclairement (Nl de -1 a 1) }
-Function MTrueShade(Base:Integer;Nl:Real;IsNight:Boolean):LongInt;
-Const
- TB:Array[0..15,0..2] Of Byte = (
-  (12,12,14),(30,50,175),(30,135,55),(40,165,175),
-  (190,30,30),(220,220,224),(150,105,50),(205,208,214),
-  (112,114,120),(75,105,235),(85,205,95),(150,232,246),
-  (240,72,72),(150,152,158),(245,222,60),(242,242,246));
-Var
- F,Hi:Real;
- R,G,B:LongInt;
- V:LongInt;
-Begin
- F:=0.28+0.72*Clamp((Nl+0.35)/1.35,0.0,1.0);
- Hi:=0.0;
- If Nl>0.85 Then Hi:=(Nl-0.85)*60.0;
- If IsNight Then Begin F:=F*0.35; Hi:=0.0; End;
- R:=Round(TB[Base,0]*F+Hi);
- G:=Round(TB[Base,1]*F+Hi);
- B:=Round(TB[Base,2]*F+Hi);
- If R>255 Then R:=255;
- If G>255 Then G:=255;
- If B>255 Then B:=255;
- V:=(R shl 16)or(G shl 8)or B;
- If V<=15 Then V:=16;
- MTrueShade:=V;
-End;
-{$ENDIF}
-
-{ Tri decroissant des quadrilateres visibles }
-Procedure MSortQuads(N:Integer);
-Var
- Gap,I,J:Integer;
- T:Word;
- Sw:Boolean;
-Begin
- Gap:=N;
- Sw:=True;
- While(Gap>1)or Sw do Begin
-  Gap:=(Gap*10)div 13;
-  If Gap<1 Then Gap:=1;
-  Sw:=False;
-  For I:=0 to N-1-Gap do Begin
-   J:=I+Gap;
-   If MKey^[MOrd^[I]]<MKey^[MOrd^[J]]Then Begin
-    T:=MOrd^[I]; MOrd^[I]:=MOrd^[J]; MOrd^[J]:=T;
-    Sw:=True;
-   End;
-  End;
- End;
-End;
-
-{ Dessine le maillage de l'avion (position P, axes F,R,U) vu de la camera C }
-Procedure MdlDraw(Const C:TCam;Const P,F,R,U:TVec;GearPos,Spool:Real;
-                  Retract,IsNight:Boolean);
-Var
- Dx,Dy,Dz,Cbx,Cby,Cbz,Crx,Cry,Crz,Cux,Cuy,Cuz,Cfx,Cfy,Cfz:Real;
- Sbx,Sby,Sbz,Vx,Vy,Vz,Zc,Sx,Sy,Qx,Qy,Qz,Nl,Foc:Real;
- I,K,N,Lv:Integer;
- Col:LongInt;
- A,B,Cc,D:Word;
- Spin,GearUp:Boolean;
- Pts:Array[0..3] Of PointType;
- Mnx,Mxx,Mny,Mxy:Integer;
-Begin
- If Not MReady Then Exit;
- Foc:=C.Foc;
- Dx:=C.P.X-P.X; Dy:=C.P.Y-P.Y; Dz:=C.P.Z-P.Z;
- Cbx:=Dx*F.X+Dy*F.Y+Dz*F.Z;
- Cby:=Dx*R.X+Dy*R.Y+Dz*R.Z;
- Cbz:=Dx*U.X+Dy*U.Y+Dz*U.Z;
- Crx:=C.R.X*F.X+C.R.Y*F.Y+C.R.Z*F.Z;
- Cry:=C.R.X*R.X+C.R.Y*R.Y+C.R.Z*R.Z;
- Crz:=C.R.X*U.X+C.R.Y*U.Y+C.R.Z*U.Z;
- Cux:=C.U.X*F.X+C.U.Y*F.Y+C.U.Z*F.Z;
- Cuy:=C.U.X*R.X+C.U.Y*R.Y+C.U.Z*R.Z;
- Cuz:=C.U.X*U.X+C.U.Y*U.Y+C.U.Z*U.Z;
- Cfx:=C.F.X*F.X+C.F.Y*F.Y+C.F.Z*F.Z;
- Cfy:=C.F.X*R.X+C.F.Y*R.Y+C.F.Z*R.Z;
- Cfz:=C.F.X*U.X+C.F.Y*U.Y+C.F.Z*U.Z;
- Sbx:=Sun.X*F.X+Sun.Y*F.Y+Sun.Z*F.Z;
- Sby:=Sun.X*R.X+Sun.Y*R.Y+Sun.Z*R.Z;
- Sbz:=Sun.X*U.X+Sun.Y*U.Y+Sun.Z*U.Z;
- Spin:=Spool>0.3;
- GearUp:=Retract and(GearPos<0.5);
- { projection de tous les sommets }
- For I:=0 to MNV-1 do Begin
-  Vx:=MV^[I].X*0.001-Cbx;
-  Vy:=MV^[I].Y*0.001-Cby;
-  Vz:=MV^[I].Z*0.001-Cbz;
-  Zc:=Vx*Cfx+Vy*Cfy+Vz*Cfz;
-  If Zc<NEAR_Z Then Begin
-   MSZ^[I]:=-1;
-   MSX^[I]:=0; MSY^[I]:=0;
-  End
-   Else Begin
-    Qx:=Vx*Crx+Vy*Cry+Vz*Crz;
-    Qy:=Vx*Cux+Vy*Cuy+Vz*Cuz;
-    Sx:=C.CX+Foc*Qx/Zc;
-    Sy:=C.CY-Foc*Qy/Zc;
-    If Sx>30000.0 Then Sx:=30000.0;
-    If Sx<-30000.0 Then Sx:=-30000.0;
-    If Sy>30000.0 Then Sy:=30000.0;
-    If Sy<-30000.0 Then Sy:=-30000.0;
-    MSX^[I]:=Round(Sx); MSY^[I]:=Round(Sy);
-    MSZ^[I]:=Round(Zc*100.0);
-   End;
- End;
- { quadrilateres visibles }
- N:=0;
+ { feux de navigation : bouts de l'aile principale et sommet de la derive }
+ MLtL.X:=0; MLtL.Y:=0; MLtL.Z:=0; MLtR:=MLtL; MLtT:=MLtL;
+ Mx:=0.0; Zc:=0.0;
  For I:=0 to MNQ-1 do Begin
-  K:=MQ^[I].G;
-  If MGear[K]and GearUp Then Continue;
-  If(MQ^[I].F=6)and Spin Then Continue;
-  If(MQ^[I].F=5)and(Not Spin)Then Continue;
-  A:=MQ^[I].A; B:=MQ^[I].B; Cc:=MQ^[I].C; D:=MQ^[I].D;
-  If(MSZ^[A]<0)or(MSZ^[B]<0)or(MSZ^[Cc]<0)or(MSZ^[D]<0)Then Continue;
-  Mnx:=MSX^[A]; Mxx:=Mnx; Mny:=MSY^[A]; Mxy:=Mny;
-  If MSX^[B]<Mnx Then Mnx:=MSX^[B]; If MSX^[B]>Mxx Then Mxx:=MSX^[B];
-  If MSX^[Cc]<Mnx Then Mnx:=MSX^[Cc]; If MSX^[Cc]>Mxx Then Mxx:=MSX^[Cc];
-  If MSY^[B]<Mny Then Mny:=MSY^[B]; If MSY^[B]>Mxy Then Mxy:=MSY^[B];
-  If MSY^[Cc]<Mny Then Mny:=MSY^[Cc]; If MSY^[Cc]>Mxy Then Mxy:=MSY^[Cc];
-  If(Mxx<VX1)or(Mnx>VX2)or(Mxy<VY1)or(Mny>VY2)Then Continue;
-  If(MQ^[I].F<>3)and(MQ^[I].F<>5)Then Begin
-   { face tournee vers l'arriere : ignoree }
-   Qx:=(MV^[A].X+MV^[Cc].X)*0.0005-Cbx;
-   Qy:=(MV^[A].Y+MV^[Cc].Y)*0.0005-Cby;
-   Qz:=(MV^[A].Z+MV^[Cc].Z)*0.0005-Cbz;
-   If MQ^[I].NX*Qx+MQ^[I].NY*Qy+MQ^[I].NZ*Qz>=0.0 Then Continue;
-  End;
-  MOrd^[N]:=I;
-  MKey^[I]:=MSZ^[A]+MSZ^[B]+MSZ^[Cc]+MSZ^[D];
-  Inc(N);
- End;
- MSortQuads(N);
- { dessin, du plus lointain au plus proche }
- For K:=0 to N-1 do Begin
-  I:=MOrd^[K];
-  A:=MQ^[I].A; B:=MQ^[I].B; Cc:=MQ^[I].C; D:=MQ^[I].D;
-  Nl:=(MQ^[I].NX*Sbx+MQ^[I].NY*Sby+MQ^[I].NZ*Sbz)/127.0;
-  If Nl>0.6 Then Lv:=0 Else If Nl>0.25 Then Lv:=1 Else
-  If Nl>-0.1 Then Lv:=2 Else If Nl>-0.45 Then Lv:=3 Else Lv:=4;
-  If IsNight Then Begin
-   Inc(Lv,2);
-   If Lv>4 Then Lv:=4;
-  End;
-  Col:=MCol[MQ^[I].G];
-  If MQ^[I].F=7 Then Col:=MCol2;
-  {$IFDEF FPC}
-  If TrueMode Then Col:=MTrueShade(Col,Nl,IsNight)
-  Else
-  {$ENDIF}
-  Col:=MShade(Col,Lv);
-  Pts[0].X:=MSX^[A]; Pts[0].Y:=MSY^[A];
-  Pts[1].X:=MSX^[B]; Pts[1].Y:=MSY^[B];
-  Pts[2].X:=MSX^[Cc]; Pts[2].Y:=MSY^[Cc];
-  Pts[3].X:=MSX^[D]; Pts[3].Y:=MSY^[D];
-  If MQ^[I].F=5 Then Begin
-   { disque d'helice en rotation : on ne trace que la couronne }
-   SetColor(DarkGray);
-   Line(Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y);
-  End
-   Else Begin
-    SetFillStyle(SolidFill,Col);
-    SetColor(Col);
-    If(A=D)Then FillPoly(3,Pts) Else FillPoly(4,Pts);
+  G:=MQ^[I].G;
+  For K:=0 to 3 do Begin
+   Case K of
+    0:Mi:=MQ^[I].A;
+    1:Mi:=MQ^[I].B;
+    2:Mi:=MQ^[I].C;
+    Else Mi:=MQ^[I].D;
    End;
+   If G=Best2 Then Begin
+    If MV^[Mi].Y<MLtL.Y Then MLtL:=MV^[Mi];
+    If MV^[Mi].Y>MLtR.Y Then MLtR:=MV^[Mi];
+   End;
+   If(Copy(MGeom^[G].Name,1,6)='Derive')and(MV^[Mi].Z>Zc)Then Begin
+    Zc:=MV^[Mi].Z; MLtT:=MV^[Mi];
+   End;
+  End;
  End;
- SetFillStyle(SolidFill,White);
+ MReady:=(MNQ>0);
 End;
 
 { Charge et construit le modele d'un avion ; retourne True si reussi }
@@ -2912,7 +2829,8 @@ Begin
  ModelPrepare:=False;
  If VspDir='' Then Exit;
  If Not MdlLoad(VspDir+Sp.Id+'.VSP')Then Exit;
- MdlBuild(OptDetail-1,Sp.Col1,Sp.Col2,Sp);
+ If TrueMode Then MdlBuild(OptDetail,Sp.Col1,Sp.Col2,Sp)
+ Else MdlBuild(OptDetail-1,Sp.Col1,Sp.Col2,Sp);
  ModelPrepare:=MReady;
 End;
 
@@ -3547,7 +3465,7 @@ Begin
 End;
 
 { Remplit le polygone de l'ecran contenu dans ClipA[0..N-1] }
-Procedure FillScreenPoly(N:Integer;Fill,Line:Integer);
+Procedure FillScreenPoly(N:Integer;Fill,Line:LongInt);
 Var
  I:Integer;
  Pts:Array[0..39] Of PointType;
@@ -3571,7 +3489,7 @@ End;
 
 { Polygone 3D plein, decoupe par le plan proche et par l'ecran }
 Procedure DrawPoly3D(Const C:TCam;Var Pts:TPoly3;N:Integer;
-                     Fill,Line:Integer);
+                     Fill,Line:LongInt);
 Var
  Cv,Cw:Array[0..31] Of TVec;
  I,M,J:Integer;
@@ -3935,6 +3853,458 @@ Begin
   End;
   LocalToWorld(I,120.0,175.0,48.0,P);
   If Odd(FrameNo div 8)Then DrawLight3D(C,P,LightRed,1.5);
+ End;
+End;
+
+{ ------------------------------------------------------------------ }
+{ Affichage du modele : ombrage, helices, flammes, feux                }
+{ ------------------------------------------------------------------ }
+
+Function MShade(Base,Lvl:Integer):Integer;
+Begin
+ Case Base of
+  15:Case Lvl of 0:MShade:=15; 1:MShade:=5; 2:MShade:=7; 3:MShade:=13;
+      Else MShade:=8; End;
+  7:Case Lvl of 0:MShade:=5; 1:MShade:=7; 2:MShade:=7; 3:MShade:=13;
+      Else MShade:=8; End;
+  8:Case Lvl of 0:MShade:=7; 1:MShade:=13; 2:MShade:=8; 3:MShade:=8;
+      Else MShade:=0; End;
+  12:Case Lvl of 0:MShade:=12; 1:MShade:=12; 2:MShade:=4; 3:MShade:=4;
+      Else MShade:=0; End;
+  4:Case Lvl of 0:MShade:=12; 1:MShade:=4; 2:MShade:=4; 3:MShade:=4;
+      Else MShade:=0; End;
+  9:Case Lvl of 0:MShade:=9; 1:MShade:=9; 2:MShade:=1; 3:MShade:=1;
+      Else MShade:=0; End;
+  1:Case Lvl of 0:MShade:=9; 1:MShade:=1; 2:MShade:=1; 3:MShade:=1;
+      Else MShade:=0; End;
+  14:Case Lvl of 0:MShade:=14; 1:MShade:=14; 2:MShade:=6; 3:MShade:=6;
+      Else MShade:=6; End;
+  6:Case Lvl of 0:MShade:=6; 1:MShade:=6; 2:MShade:=6; 3:MShade:=8;
+      Else MShade:=8; End;
+  10:Case Lvl of 0:MShade:=10; 1:MShade:=10; 2:MShade:=2; 3:MShade:=2;
+      Else MShade:=0; End;
+  2:Case Lvl of 0:MShade:=10; 1:MShade:=2; 2:MShade:=2; 3:MShade:=2;
+      Else MShade:=0; End;
+  11:Case Lvl of 0:MShade:=11; 1:MShade:=11; 2:MShade:=3; 3:MShade:=3;
+      Else MShade:=1; End;
+  3:Case Lvl of 0:MShade:=11; 1:MShade:=3; 2:MShade:=3; 3:MShade:=1;
+      Else MShade:=1; End;
+  Else Case Lvl of 0:MShade:=Base; 1:MShade:=Base; 2:MShade:=DarkOf(Base);
+      Else MShade:=0; End;
+ End;
+End;
+
+{$IFDEF FPC}
+{ Eclairage en couleurs directes : lumiere ambiante (ciel / sol), lumiere
+  du soleil, reflet brillant (Blinn-Phong) et reflet du ciel sur la verriere.
+  N : normale lissee ; S : direction du soleil ; V : vers la camera ;
+  Ub : verticale du monde dans le repere de l'avion. }
+Function MTrueLight(Base:Integer;Nx,Ny,Nz,Sx,Sy,Sz,Vx,Vy,Vz,Ubx,Uby,Ubz:Real;
+                    IsNight:Boolean):LongInt;
+Const
+ TB:Array[0..15,0..2] Of Byte = (
+  (12,12,14),(30,50,175),(30,135,55),(40,165,175),
+  (190,30,30),(222,222,226),(150,105,50),(205,208,214),
+  (112,114,120),(75,105,235),(85,205,95),(30,62,100),
+  (240,72,72),(150,152,158),(245,222,60),(242,242,246));
+Var
+ Hemi,Amb,Dif,Ks,Shin,Hx,Hy,Hz,Hl,Nh,Sp,Fr,R,G,B,AR,AG,AB:Real;
+ V:LongInt;
+Begin
+ Hemi:=0.5+0.5*(Nx*Ubx+Ny*Uby+Nz*Ubz);
+ Amb:=0.20+0.27*Hemi;
+ Dif:=Nx*Sx+Ny*Sy+Nz*Sz;
+ If Dif<0.0 Then Dif:=0.0;
+ Dif:=Dif*0.84;
+ If IsNight Then Begin Amb:=Amb*0.16; Dif:=Dif*0.04; End;
+ AR:=Amb*(0.88+0.12*(1.0-Hemi));
+ AG:=Amb*0.96;
+ AB:=Amb*(0.82+0.18*Hemi);
+ R:=TB[Base,0]; G:=TB[Base,1]; B:=TB[Base,2];
+ Case Base of
+  11:Begin Ks:=1.0; Shin:=60.0; End;
+  15,5,7,13:Begin Ks:=0.38; Shin:=22.0; End;
+  8,0:Begin Ks:=0.10; Shin:=10.0; End;
+  Else Begin Ks:=0.24; Shin:=18.0; End;
+ End;
+ R:=R*(AR+Dif);
+ G:=G*(AG+Dif*0.98);
+ B:=B*(AB+Dif*0.92);
+ { reflet brillant du soleil }
+ If(Dif>0.0)and(Not IsNight)Then Begin
+  Hx:=Sx+Vx; Hy:=Sy+Vy; Hz:=Sz+Vz;
+  Hl:=Sqrt(Hx*Hx+Hy*Hy+Hz*Hz);
+  If Hl>1E-6 Then Begin
+   Nh:=(Nx*Hx+Ny*Hy+Nz*Hz)/Hl;
+   If Nh>0.55 Then Begin
+    Sp:=Exp(Shin*Ln(Nh))*Ks*255.0;
+    R:=R+Sp; G:=G+Sp; B:=B+Sp*0.95;
+   End;
+  End;
+ End;
+ { reflet du ciel sur la verriere (effet de Fresnel) }
+ If Base=11 Then Begin
+  Fr:=1.0-Abs(Nx*Vx+Ny*Vy+Nz*Vz);
+  Fr:=Fr*Fr*0.85;
+  If IsNight Then Fr:=Fr*0.2;
+  R:=R+Fr*(150.0-R);
+  G:=G+Fr*(190.0-G);
+  B:=B+Fr*(238.0-B);
+ End;
+ If R>255.0 Then R:=255.0;
+ If G>255.0 Then G:=255.0;
+ If B>255.0 Then B:=255.0;
+ V:=(Round(R)shl 16)or(Round(G)shl 8)or Round(B);
+ If V<=15 Then V:=16;
+ MTrueLight:=V;
+End;
+
+{ Triangle melange avec le fond (transparence) : flou des helices }
+Procedure BlendTri(X1,Y1,X2,Y2,X3,Y3:Integer;RGB:LongInt;Alpha:Real);
+Var
+ Xs,Ys:Array[0..2] Of Integer;
+ Y,YA,YB,XA,XB,X,I,J,N:Integer;
+ Xm,XM2:Integer;
+ T:Real;
+ Px,V:LongInt;
+ Rb,Gb,Bb:Integer;
+Begin
+ Xs[0]:=X1; Ys[0]:=Y1; Xs[1]:=X2; Ys[1]:=Y2; Xs[2]:=X3; Ys[2]:=Y3;
+ YA:=Y1; YB:=Y1;
+ For I:=1 to 2 do Begin
+  If Ys[I]<YA Then YA:=Ys[I];
+  If Ys[I]>YB Then YB:=Ys[I];
+ End;
+ If YA<VY1 Then YA:=VY1;
+ If YB>VY2 Then YB:=VY2;
+ For Y:=YA to YB do Begin
+  Xm:=30000; XM2:=-30000; N:=0;
+  For I:=0 to 2 do Begin
+   J:=(I+1)mod 3;
+   If((Ys[I]<=Y)and(Ys[J]>Y))or((Ys[J]<=Y)and(Ys[I]>Y))Then Begin
+    T:=(Y-Ys[I])/(Ys[J]-Ys[I]);
+    X:=Round(Xs[I]+T*(Xs[J]-Xs[I]));
+    If X<Xm Then Xm:=X;
+    If X>XM2 Then XM2:=X;
+    Inc(N);
+   End;
+  End;
+  If N>=2 Then Begin
+   If Xm<VX1 Then Xm:=VX1;
+   If XM2>VX2 Then XM2:=VX2;
+   For X:=Xm to XM2-1 do Begin
+    Px:=GetPixel(X,Y);
+    Rb:=Round(((Px shr 16)and 255)*(1.0-Alpha)+((RGB shr 16)and 255)*Alpha);
+    Gb:=Round(((Px shr 8)and 255)*(1.0-Alpha)+((RGB shr 8)and 255)*Alpha);
+    Bb:=Round((Px and 255)*(1.0-Alpha)+(RGB and 255)*Alpha);
+    V:=(LongInt(Rb)shl 16)or(LongInt(Gb)shl 8)or Bb;
+    If V<=15 Then V:=16;
+    PutPixel(X,Y,V);
+   End;
+  End;
+ End;
+End;
+{$ENDIF}
+
+{ Tri decroissant des quadrilateres visibles }
+Procedure MSortQuads(N:Integer);
+Var
+ Gap,I,J:Integer;
+ T:Word;
+ Sw:Boolean;
+Begin
+ Gap:=N;
+ Sw:=True;
+ While(Gap>1)or Sw do Begin
+  Gap:=(Gap*10)div 13;
+  If Gap<1 Then Gap:=1;
+  Sw:=False;
+  For I:=0 to N-1-Gap do Begin
+   J:=I+Gap;
+   If MKey^[MOrd^[I]]<MKey^[MOrd^[J]]Then Begin
+    T:=MOrd^[I]; MOrd^[I]:=MOrd^[J]; MOrd^[J]:=T;
+    Sw:=True;
+   End;
+  End;
+ End;
+End;
+
+{ Rotation d'un point autour de l'axe d'une helice (formule de Rodrigues) }
+Procedure MRotAxis(Inst:Integer;Cs,Sn:Real;Var X,Y,Z:Real);
+Var
+ Ax,Ay,Az,D,Cx,Cy,Cz:Real;
+Begin
+ Ax:=MInst[Inst].AX; Ay:=MInst[Inst].AY; Az:=MInst[Inst].AZ;
+ D:=Ax*X+Ay*Y+Az*Z;
+ Cx:=Ay*Z-Az*Y; Cy:=Az*X-Ax*Z; Cz:=Ax*Y-Ay*X;
+ X:=X*Cs+Cx*Sn+Ax*D*(1.0-Cs);
+ Y:=Y*Cs+Cy*Sn+Ay*D*(1.0-Cs);
+ Z:=Z*Cs+Cz*Sn+Az*D*(1.0-Cs);
+End;
+
+{ Flammes de postcombustion ou de fusee derriere les tuyeres }
+Procedure MFlames(Const C:TCam;Const P,F,R,U:TVec;Level:Real;IsNight:Boolean);
+Var
+ I:Integer;
+ Bx,By,Bz,Dx,Dy,Dz,Rm,L,Fl:Real;
+ A,B:TVec;
+ SAx,SAy,SBx,SBy,Za,Zb,Ex,Ey,El,Wd:Real;
+ Pts:Array[0..2] Of PointType;
+ K:Integer;
+ Cols:Array[0..2] Of LongInt;
+Begin
+ If Level<0.02 Then Exit;
+ {$IFDEF FPC}
+  If TrueMode Then Begin
+   Cols[0]:=(255 shl 16)or(70 shl 8)or 20;
+   Cols[1]:=(255 shl 16)or(165 shl 8)or 45;
+   Cols[2]:=(255 shl 16)or(245 shl 8)or 190;
+  End
+   Else
+ {$ENDIF}
+ Begin
+  Cols[0]:=LightRed; Cols[1]:=Yellow; Cols[2]:=White;
+ End;
+ For I:=0 to MNNoz-1 do Begin
+  Bx:=MNoz[I].X*0.001; By:=MNoz[I].Y*0.001; Bz:=MNoz[I].Z*0.001;
+  Dx:=MNoz[I].DX; Dy:=MNoz[I].DY; Dz:=MNoz[I].DZ;
+  Rm:=MNoz[I].R*0.001;
+  Fl:=0.88+0.24*RandR;
+  L:=Rm*(3.0+8.0*Level)*Fl;
+  A.X:=P.X+F.X*Bx+R.X*By+U.X*Bz;
+  A.Y:=P.Y+F.Y*Bx+R.Y*By+U.Y*Bz;
+  A.Z:=P.Z+F.Z*Bx+R.Z*By+U.Z*Bz;
+  B.X:=A.X+(F.X*Dx+R.X*Dy+U.X*Dz)*L;
+  B.Y:=A.Y+(F.Y*Dx+R.Y*Dy+U.Y*Dz)*L;
+  B.Z:=A.Z+(F.Z*Dx+R.Z*Dy+U.Z*Dz)*L;
+  If Proj(C,A,SAx,SAy,Za)and Proj(C,B,SBx,SBy,Zb)Then Begin
+   Ex:=SBx-SAx; Ey:=SBy-SAy;
+   El:=Sqrt(Ex*Ex+Ey*Ey);
+   If El>0.5 Then Begin
+    Wd:=Rm*C.Foc/Za;
+    If Wd<1.0 Then Wd:=1.0;
+    Ex:=Ex/El; Ey:=Ey/El;
+    For K:=0 to 2 do Begin
+     Pts[0].X:=Round(SAx-Ey*Wd*(1.05-0.3*K));
+     Pts[0].Y:=Round(SAy+Ex*Wd*(1.05-0.3*K));
+     Pts[1].X:=Round(SAx+Ey*Wd*(1.05-0.3*K));
+     Pts[1].Y:=Round(SAy-Ex*Wd*(1.05-0.3*K));
+     Pts[2].X:=Round(SAx+Ex*El*(1.0-0.28*K));
+     Pts[2].Y:=Round(SAy+Ey*El*(1.0-0.28*K));
+     SetFillStyle(SolidFill,Cols[K]);
+     SetColor(Cols[K]);
+     FillPoly(3,Pts);
+    End;
+   End;
+  End;
+ End;
+End;
+
+{ Dessine le maillage de l'avion (position P, axes F,R,U) vu de la camera C.
+  Flame : intensite de la flamme (0 a 1) ; Spool : regime du moteur. }
+Procedure MdlDraw(Const C:TCam;Const P,F,R,U:TVec;GearPos,Spool,Flame:Real;
+                  Retract,IsNight:Boolean);
+Var
+ Dx,Dy,Dz,Cbx,Cby,Cbz,Crx,Cry,Crz,Cux,Cuy,Cuz,Cfx,Cfy,Cfz:Real;
+ Sbx,Sby,Sbz,Ubx,Uby,Ubz,Vx,Vy,Vz,Zc,Sx,Sy,Qx,Qy,Qz,Nl,Foc:Real;
+ Nx,Ny,Nz,Nn,Cs,Sn,Vl:Real;
+ I,K,N,Lv,Fq:Integer;
+ Col:LongInt;
+ A,B,Cc,D:Word;
+ Spin,GearUp,FlameBack:Boolean;
+ Pts:Array[0..3] Of PointType;
+ Mnx,Mxx,Mny,Mxy:Integer;
+ Q,W:TVec;
+Begin
+ If Not MReady Then Exit;
+ Foc:=C.Foc;
+ Dx:=C.P.X-P.X; Dy:=C.P.Y-P.Y; Dz:=C.P.Z-P.Z;
+ Cbx:=Dx*F.X+Dy*F.Y+Dz*F.Z;
+ Cby:=Dx*R.X+Dy*R.Y+Dz*R.Z;
+ Cbz:=Dx*U.X+Dy*U.Y+Dz*U.Z;
+ Crx:=C.R.X*F.X+C.R.Y*F.Y+C.R.Z*F.Z;
+ Cry:=C.R.X*R.X+C.R.Y*R.Y+C.R.Z*R.Z;
+ Crz:=C.R.X*U.X+C.R.Y*U.Y+C.R.Z*U.Z;
+ Cux:=C.U.X*F.X+C.U.Y*F.Y+C.U.Z*F.Z;
+ Cuy:=C.U.X*R.X+C.U.Y*R.Y+C.U.Z*R.Z;
+ Cuz:=C.U.X*U.X+C.U.Y*U.Y+C.U.Z*U.Z;
+ Cfx:=C.F.X*F.X+C.F.Y*F.Y+C.F.Z*F.Z;
+ Cfy:=C.F.X*R.X+C.F.Y*R.Y+C.F.Z*R.Z;
+ Cfz:=C.F.X*U.X+C.F.Y*U.Y+C.F.Z*U.Z;
+ Sbx:=Sun.X*F.X+Sun.Y*F.Y+Sun.Z*F.Z;
+ Sby:=Sun.X*R.X+Sun.Y*R.Y+Sun.Z*R.Z;
+ Sbz:=Sun.X*U.X+Sun.Y*U.Y+Sun.Z*U.Z;
+ Ubx:=F.Z; Uby:=R.Z; Ubz:=U.Z;
+ Spin:=Spool>0.3;
+ GearUp:=Retract and(GearPos<0.5);
+
+ { helices : les pales tournent autour de leur axe }
+ If Spool>0.02 Then Begin
+  MPhase:=MPhase+0.25+Spool*2.1;
+  If MPhase>6.2831853 Then MPhase:=MPhase-6.2831853;
+ End;
+ Cs:=Cos(MPhase); Sn:=Sin(MPhase);
+ Move(MV^,MVA^,MNV*SizeOf(TMVert));
+ For I:=0 to MNBV-1 do Begin
+  K:=MBVIdx[I];
+  Nx:=MV^[K].X-MInst[MVB^[K]-1].CX;
+  Ny:=MV^[K].Y-MInst[MVB^[K]-1].CY;
+  Nz:=MV^[K].Z-MInst[MVB^[K]-1].CZ;
+  MRotAxis(MVB^[K]-1,Cs,Sn,Nx,Ny,Nz);
+  MVA^[K].X:=Round(MInst[MVB^[K]-1].CX+Nx);
+  MVA^[K].Y:=Round(MInst[MVB^[K]-1].CY+Ny);
+  MVA^[K].Z:=Round(MInst[MVB^[K]-1].CZ+Nz);
+ End;
+
+ { flammes : derriere l'avion elles passent devant, sinon derriere }
+ FlameBack:=False;
+ If(Flame>0.02)and(MNNoz>0)Then Begin
+  FlameBack:=Cbx<MNoz[0].X*0.001;
+  If Not FlameBack Then MFlames(C,P,F,R,U,Flame,IsNight);
+ End;
+
+ { projection de tous les sommets }
+ For I:=0 to MNV-1 do Begin
+  Vx:=MVA^[I].X*0.001-Cbx;
+  Vy:=MVA^[I].Y*0.001-Cby;
+  Vz:=MVA^[I].Z*0.001-Cbz;
+  Zc:=Vx*Cfx+Vy*Cfy+Vz*Cfz;
+  If Zc<NEAR_Z Then Begin
+   MSZ^[I]:=-1;
+   MSX^[I]:=0; MSY^[I]:=0;
+  End
+   Else Begin
+    Qx:=Vx*Crx+Vy*Cry+Vz*Crz;
+    Qy:=Vx*Cux+Vy*Cuy+Vz*Cuz;
+    Sx:=C.CX+Foc*Qx/Zc;
+    Sy:=C.CY-Foc*Qy/Zc;
+    If Sx>30000.0 Then Sx:=30000.0;
+    If Sx<-30000.0 Then Sx:=-30000.0;
+    If Sy>30000.0 Then Sy:=30000.0;
+    If Sy<-30000.0 Then Sy:=-30000.0;
+    MSX^[I]:=Round(Sx); MSY^[I]:=Round(Sy);
+    MSZ^[I]:=Round(Zc*100.0);
+   End;
+ End;
+
+ { quadrilateres visibles : culling, eclairage, profondeur }
+ N:=0;
+ For I:=0 to MNQ-1 do Begin
+  K:=MQ^[I].G;
+  If MGear[K]and GearUp Then Continue;
+  Fq:=MQ^[I].F;
+  If(Fq=6)and Spin and TrueMode Then Continue;
+  If(Fq=5)and(Not Spin)Then Continue;
+  A:=MQ^[I].A; B:=MQ^[I].B; Cc:=MQ^[I].C; D:=MQ^[I].D;
+  If(MSZ^[A]<0)or(MSZ^[B]<0)or(MSZ^[Cc]<0)or(MSZ^[D]<0)Then Continue;
+  Mnx:=MSX^[A]; Mxx:=Mnx; Mny:=MSY^[A]; Mxy:=Mny;
+  If MSX^[B]<Mnx Then Mnx:=MSX^[B]; If MSX^[B]>Mxx Then Mxx:=MSX^[B];
+  If MSX^[Cc]<Mnx Then Mnx:=MSX^[Cc]; If MSX^[Cc]>Mxx Then Mxx:=MSX^[Cc];
+  If MSY^[B]<Mny Then Mny:=MSY^[B]; If MSY^[B]>Mxy Then Mxy:=MSY^[B];
+  If MSY^[Cc]<Mny Then Mny:=MSY^[Cc]; If MSY^[Cc]>Mxy Then Mxy:=MSY^[Cc];
+  If(Mxx<VX1)or(Mnx>VX2)or(Mxy<VY1)or(Mny>VY2)Then Continue;
+  { normale de la face (les pales tournent avec leur axe) }
+  Nx:=MQ^[I].NX; Ny:=MQ^[I].NY; Nz:=MQ^[I].NZ;
+  If(Fq=6)and(MVB^[A]>0)Then MRotAxis(MVB^[A]-1,Cs,Sn,Nx,Ny,Nz);
+  Qx:=(MVA^[A].X+MVA^[Cc].X)*0.0005-Cbx;
+  Qy:=(MVA^[A].Y+MVA^[Cc].Y)*0.0005-Cby;
+  Qz:=(MVA^[A].Z+MVA^[Cc].Z)*0.0005-Cbz;
+  If(Fq<>3)and(Fq<>5)Then
+   If Nx*Qx+Ny*Qy+Nz*Qz>=0.0 Then Continue;
+  Col:=MCol[K];
+  If Fq=7 Then Col:=MCol2;
+  {$IFDEF FPC}
+  If TrueMode Then Begin
+   If Fq<>6 Then Begin
+    { normale lissee : moyenne des normales des sommets }
+    Nx:=MVN^[A].X+MVN^[B].X+MVN^[Cc].X;
+    Ny:=MVN^[A].Y+MVN^[B].Y+MVN^[Cc].Y;
+    Nz:=MVN^[A].Z+MVN^[B].Z+MVN^[Cc].Z;
+    If D<>A Then Begin
+     Nx:=Nx+MVN^[D].X; Ny:=Ny+MVN^[D].Y; Nz:=Nz+MVN^[D].Z;
+    End;
+   End;
+   Nn:=Sqrt(Nx*Nx+Ny*Ny+Nz*Nz);
+   If Nn<1E-6 Then Nn:=1.0;
+   Nx:=Nx/Nn; Ny:=Ny/Nn; Nz:=Nz/Nn;
+   If Nx*Qx+Ny*Qy+Nz*Qz>0.0 Then Begin Nx:=-Nx; Ny:=-Ny; Nz:=-Nz; End;
+   Vl:=Sqrt(Qx*Qx+Qy*Qy+Qz*Qz);
+   If Vl<1E-6 Then Vl:=1.0;
+   Col:=MTrueLight(Col,Nx,Ny,Nz,Sbx,Sby,Sbz,-Qx/Vl,-Qy/Vl,-Qz/Vl,Ubx,Uby,Ubz,
+                   IsNight);
+  End
+   Else
+  {$ENDIF}
+  Begin
+   Nl:=(MQ^[I].NX*Sbx+MQ^[I].NY*Sby+MQ^[I].NZ*Sbz)/127.0;
+   If Fq=6 Then Nl:=(Nx*Sbx+Ny*Sby+Nz*Sbz)/127.0;
+   If Nl>0.6 Then Lv:=0 Else If Nl>0.25 Then Lv:=1 Else
+   If Nl>-0.1 Then Lv:=2 Else If Nl>-0.45 Then Lv:=3 Else Lv:=4;
+   If IsNight Then Begin
+    Inc(Lv,2);
+    If Lv>4 Then Lv:=4;
+   End;
+   Col:=MShade(Col,Lv);
+  End;
+  MCq^[I]:=Col;
+  MOrd^[N]:=I;
+  MKey^[I]:=MSZ^[A]+MSZ^[B]+MSZ^[Cc]+MSZ^[D];
+  { la verriere est posee sur le fuselage : on la dessine apres lui }
+  If MCol[K]=LightCyan Then MKey^[I]:=MKey^[I]-90;
+  Inc(N);
+ End;
+ MSortQuads(N);
+
+ { dessin, du plus lointain au plus proche }
+ For K:=0 to N-1 do Begin
+  I:=MOrd^[K];
+  A:=MQ^[I].A; B:=MQ^[I].B; Cc:=MQ^[I].C; D:=MQ^[I].D;
+  Pts[0].X:=MSX^[A]; Pts[0].Y:=MSY^[A];
+  Pts[1].X:=MSX^[B]; Pts[1].Y:=MSY^[B];
+  Pts[2].X:=MSX^[Cc]; Pts[2].Y:=MSY^[Cc];
+  Pts[3].X:=MSX^[D]; Pts[3].Y:=MSY^[D];
+  If MQ^[I].F=5 Then Begin
+   {$IFDEF FPC}
+   If TrueMode Then
+    BlendTri(Pts[0].X,Pts[0].Y,Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y,
+             (40 shl 16)or(40 shl 8)or 44,0.34+0.12*Spool)
+   Else
+   {$ENDIF}
+   Begin
+    { disque d'helice en rotation : couronne }
+    SetColor(DarkGray);
+    Line(Pts[1].X,Pts[1].Y,Pts[2].X,Pts[2].Y);
+   End;
+  End
+   Else Begin
+    SetFillStyle(SolidFill,MCq^[I]);
+    SetColor(MCq^[I]);
+    If(A=D)Then FillPoly(3,Pts) Else FillPoly(4,Pts);
+   End;
+ End;
+ SetFillStyle(SolidFill,White);
+
+ If FlameBack Then MFlames(C,P,F,R,U,Flame,IsNight);
+
+ { feux de navigation de nuit }
+ If IsNight Then Begin
+  Q.X:=MLtL.X*0.001; Q.Y:=MLtL.Y*0.001; Q.Z:=MLtL.Z*0.001;
+  W.X:=P.X+F.X*Q.X+R.X*Q.Y+U.X*Q.Z;
+  W.Y:=P.Y+F.Y*Q.X+R.Y*Q.Y+U.Y*Q.Z;
+  W.Z:=P.Z+F.Z*Q.X+R.Z*Q.Y+U.Z*Q.Z;
+  DrawLight3D(C,W,LightRed,0.25);
+  Q.X:=MLtR.X*0.001; Q.Y:=MLtR.Y*0.001; Q.Z:=MLtR.Z*0.001;
+  W.X:=P.X+F.X*Q.X+R.X*Q.Y+U.X*Q.Z;
+  W.Y:=P.Y+F.Y*Q.X+R.Y*Q.Y+U.Y*Q.Z;
+  W.Z:=P.Z+F.Z*Q.X+R.Z*Q.Y+U.Z*Q.Z;
+  DrawLight3D(C,W,LightGreen,0.25);
+  If FrameNo mod 24<4 Then Begin
+   Q.X:=MLtT.X*0.001; Q.Y:=MLtT.Y*0.001; Q.Z:=MLtT.Z*0.001+0.15;
+   W.X:=P.X+F.X*Q.X+R.X*Q.Y+U.X*Q.Z;
+   W.Y:=P.Y+F.Y*Q.X+R.Y*Q.Y+U.Y*Q.Z;
+   W.Z:=P.Z+F.Z*Q.X+R.Z*Q.Y+U.Z*Q.Z;
+   DrawLight3D(C,W,White,0.35);
+  End;
  End;
 End;
 
@@ -4355,20 +4725,40 @@ Var
  A,B,P:TVec;
  K:Integer;
  Sh:TPoly3;
- Ang,R:Real;
+ Ang,Fx,Fy,Fn,Ex,Ey,Hh,Fm,Th:Real;
+ ShCol:LongInt;
 Begin
  Sp:=Specs[F.Spec];
- { ombre au sol }
- R:=Sp.Span*0.5;
- For K:=0 to 9 do Begin
-  Ang:=K*2.0*Pi/10.0;
-  VSet(Sh[K],F.P.X+Cos(Ang)*R,F.P.Y+Sin(Ang)*R*0.6,
-       TerrainH(F.P.X,F.P.Y)+0.2);
+ { ombre au sol : decalee selon le soleil, orientee dans le sens de l'avion }
+ Th:=TerrainH(F.P.X,F.P.Y);
+ Hh:=MaxR(0.0,F.P.Z-Th-Sp.GearH);
+ If Hh>3000.0 Then Hh:=3000.0;
+ Fx:=F.F.X; Fy:=F.F.Y;
+ Fn:=Sqrt(Fx*Fx+Fy*Fy);
+ If Fn<0.2 Then Begin Fx:=0.0; Fy:=1.0; Fn:=1.0; End;
+ Fx:=Fx/Fn; Fy:=Fy/Fn;
+ For K:=0 to 15 do Begin
+  Ang:=K*2.0*Pi/16.0;
+  Ex:=Cos(Ang)*Sp.Len*0.45;
+  Ey:=Sin(Ang)*Sp.Span*0.5;
+  VSet(Sh[K],F.P.X-Sun.X/Sun.Z*Hh+Fx*Ex+Fy*Ey,
+       F.P.Y-Sun.Y/Sun.Z*Hh+Fy*Ex-Fx*Ey,Th+0.2);
  End;
- If(Not Night)and(Not InLake(F.P.X,F.P.Y))Then
-  DrawPoly3D(C,Sh,10,DarkGray,-1);
+ If(Not Night)and(Not InLake(F.P.X,F.P.Y))Then Begin
+  ShCol:=DarkGray;
+  {$IFDEF FPC}
+  If TrueMode Then Begin
+   If OnPaved(F.P.X,F.P.Y)Then ShCol:=(44 shl 16)or(44 shl 8)or 48
+                          Else ShCol:=(0 shl 16)or(104 shl 8)or 4;
+  End;
+  {$ENDIF}
+  DrawPoly3D(C,Sh,16,ShCol,-1);
+ End;
+ Fm:=0.0;
+ If Sp.Ab Then Fm:=Clamp((F.Spool-0.85)/0.15,0.0,1.0) Else
+ If Sp.Cat='R' Then Fm:=Clamp(F.Spool,0.0,1.0);
  If MReady Then
-  MdlDraw(C,F.P,F.F,F.R,F.U,F.GearPos,F.Spool,Sp.Retract,Night)
+  MdlDraw(C,F.P,F.F,F.R,F.U,F.GearPos,F.Spool,Fm,Sp.Retract,Night)
  Else Begin
   BuildPlane(F);
   SortAndDrawModel(C);
@@ -5656,7 +6046,7 @@ Begin
   VSet(C.P,D*Cos(E)*Sin(Ang),D*Cos(E)*Cos(Ang),D*Sin(E)-Sp.GearH*0.4);
   VSet(P,0.0,0.0,0.0);
   LookAt(C,P);
-  MdlDraw(C,P,F,R,U,1.0,0.0,False,False);
+  MdlDraw(C,P,F,R,U,1.0,0.0,0.0,False,False);
  End
   Else DrawLogoPlane(104,75,Ang,1.2,White,LightGray);
  SetVV(0,0,639,479);
