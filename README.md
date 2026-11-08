@@ -35,6 +35,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de calculer la distance d'atterrissage d'un avion (phase aérienne, roulage libre et freiné, vent, pente, état de piste, marge de sécurité).</td>
 	</tr>
 	<tr>
+		<td><b>CARBU.PAS</b></td>
+		<td>Cette commande permet de calculer l'autonomie, la portée et le rayon d'action d'un avion (carburant, vent, réserves, déroutement, formule de Breguet).</td>
+	</tr>
+	<tr>
 		<td><b>CAS.PAS</b></td>
 		<td>Cette commande permet de calculer la vitesse anémométrique corrigée (Calibrate Airspeed).</td>
 	</tr>
