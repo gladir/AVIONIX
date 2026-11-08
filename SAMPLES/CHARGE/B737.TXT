@@ -1,0 +1,12 @@
+# Boeing 737-800 : chargement type (masses en livres, bras en pouces ; MAC de 134,5 po,
+# bord d'attaque de la MAC au bras 625,6 po : /MAC:625.6:134.5)
+# Valeurs illustratives pour tester CHARGE, ne pas utiliser pour un vol reel.
+# Format : nom masse bras
+Avion vide (OEW)       91300   660
+Equipage                 500   280
+Passagers avant         9000   520
+Passagers milieu       13000   700
+Passagers arriere       9000   880
+Soute avant             4000   430
+Soute arriere           5000   900
+Carburant              35000   640

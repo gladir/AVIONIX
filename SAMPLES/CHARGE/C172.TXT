@@ -1,0 +1,8 @@
+# Cessna 172S Skyhawk : chargement type (masses en livres, bras en pouces apres la reference)
+# Valeurs illustratives pour tester CHARGE, verifier le manuel de vol pour un usage reel.
+# Format : nom masse bras
+Avion vide              1663   39.4
+Pilote                   170   37.0
+Passager avant           160   37.0
+Bagages zone 1            30   95.0
+Carburant (53 gal)       318   48.0

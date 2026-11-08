@@ -43,6 +43,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de calculer la vitesse anémométrique corrigée (Calibrate Airspeed).</td>
 	</tr>
 	<tr>
+		<td><b>CHARGE.PAS</b></td>
+		<td>Cette commande permet de calculer le centre de gravité d'un avion à partir de son chargement (masse et bras de levier de chaque poste, % MAC, enveloppe, consommation du carburant).</td>
+	</tr>
+	<tr>
 		<td><b>DECOL.PAS</b></td>
 		<td>Cette commande permet d'effectuer l'estimation de la distance de décollage.</td>
 	</tr>
@@ -77,6 +81,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 	<tr>
 		<td><b>MACH.PAS</b></td>
 		<td>Cette commande permet de calculer la vitesse d'un avion.</td>
+	</tr>
+	<tr>
+		<td><b>METAR.PAS</b></td>
+		<td>Cette commande permet de décoder les messages météorologiques aéronautiques METAR, SPECI et TAF (vent, visibilité, RVR, temps présent, nuages, température, pression, catégorie de vol).</td>
 	</tr>
 	<tr>
 		<td><b>OPENVSP.PAS</b></td>
