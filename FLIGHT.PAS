@@ -47,16 +47,26 @@ Const
  MAX_AC      = 240;
  MAX_MTN     = 10;
  MAX_BLD     = 128;
- MAX_CLD     = 30;
+ MAX_CLD     = 80;
+ CLOUD_CELL  = 60000.0;       { periode du champ de nuages, m }
  MAX_LAKE    = 3;
  MAX_STAR    = 60;
- MAX_OBJ     = 180;
+ MAX_OBJ     = 260;
 
  { Types d'objets 3D tries }
  OBJ_MTN     = 1;
  OBJ_BLD     = 2;
  OBJ_CLD     = 3;
  OBJ_PLANE   = 4;
+ OBJ_TORN    = 5;
+
+ { Conditions meteorologiques }
+ WX_SUN      = 0;
+ WX_CLOUD    = 1;
+ WX_RAIN     = 2;
+ WX_STORM    = 3;
+ WX_TORN     = 4;
+ WX_RAND     = 5;
 
  { Vues }
  VIEW_COCKPIT = 0;
@@ -173,7 +183,17 @@ Const
  D_YEAR = 106;
  D_SELHINT = 107;
  M_ACLIST = 108;
- NB_MSG = 108;
+ M_WEATHER = 109;
+ M_WX_SUN = 110;
+ M_WX_CLOUD = 111;
+ M_WX_RAIN = 112;
+ M_WX_STORM = 113;
+ M_WX_TORN = 114;
+ M_WX_RAND = 115;
+ W_TORNADO = 116;
+ W_WXCHG = 117;
+ C_TORNADO = 118;
+ NB_MSG = 118;
 
 Const
  Msgs : Array[1..NB_MSG] Of Array[0..4] Of String[58] = (
@@ -716,7 +736,57 @@ Const
    'Enter : aircraft list',
    'Enter : Flugzeugliste',
    'Intro : lista de aviones',
-   'Invio : elenco aerei')
+   'Invio : elenco aerei'),
+  ('M~et~eo',
+   'Weather',
+   'Wetter',
+   'Tiempo',
+   'Meteo'),
+  ('Ensoleill~e',
+   'Sunny',
+   'Sonnig',
+   'Soleado',
+   'Soleggiato'),
+  ('Nuageux',
+   'Cloudy',
+   'Bew~Olkt',
+   'Nublado',
+   'Nuvoloso'),
+  ('Pluie',
+   'Rain',
+   'Regen',
+   'Lluvia',
+   'Pioggia'),
+  ('Orage',
+   'Thunderstorm',
+   'Gewitter',
+   'Tormenta',
+   'Temporale'),
+  ('Tornade',
+   'Tornado',
+   'Tornado',
+   'Tornado',
+   'Tornado'),
+  ('Al~eatoire',
+   'Random',
+   'Zufall',
+   'Aleatorio',
+   'Casuale'),
+  ('TORNADE ! ~EVITEZ LA ZONE',
+   'TORNADO ! AVOID THE AREA',
+   'TORNADO ! ZONE MEIDEN',
+   '~!TORNADO ! EVITE LA ZONA',
+   'TORNADO ! EVITARE LA ZONA'),
+  ('M~et~eo',
+   'Weather',
+   'Wetter',
+   'Tiempo',
+   'Meteo'),
+  ('D~etruit par la tornade',
+   'Destroyed by the tornado',
+   'Vom Tornado zerst~Ort',
+   'Destruido por el tornado',
+   'Distrutto dal tornado')
  );
 
 Type
@@ -893,6 +963,7 @@ Var
  OptWind    : Integer;
  OptDetail  : Integer;
  OptAssist  : Integer;
+ OptWeather : Integer;      { 0 a 4 : condition, 5 : aleatoire }
 
  ViewMode   : Integer;
  Night      : Boolean;
@@ -900,6 +971,28 @@ Var
  DestAp     : Integer;
  MapZoom    : Real;
  InCloud    : Boolean;
+
+ { Meteo : valeurs courantes (melangees en douceur vers la cible) }
+ Wx         : Integer;      { condition en cours }
+ WxCover    : Real;         { couverture nuageuse 0..1 }
+ WxCeil     : Real;         { coefficient d'altitude des nuages }
+ WxRain     : Real;         { intensite de la pluie 0..1 }
+ WxDark     : Real;         { noirceur du ciel et des nuages 0..1 }
+ WxVis      : Real;         { visibilite, m }
+ WxTurb     : Real;         { turbulence de base }
+ WxWindMin  : Real;         { vent minimal impose, m/s }
+ WxTime     : Real;         { duree depuis le dernier changement }
+ WxNext     : Real;         { duree avant le prochain changement }
+ Turb       : Real;         { turbulence appliquee a l'avion }
+ WindBase   : TVec;
+ FlashT     : Real;         { duree restante de l'eclair }
+ LightT     : Real;         { delai avant le prochain eclair }
+ Bolt       : Array[0..8] Of TVec;
+ TorOn      : Boolean;
+ TorX, TorY : Real;
+ TorVX, TorVY : Real;
+ TorDist    : Real;         { distance a la tornade, m }
+
  FrameNo    : LongInt;
 
  { Message affiche a l'ecran }
@@ -967,6 +1060,21 @@ End;
 Procedure PutPixel(X,Y:Integer;C:LongInt);
 Begin
  PtcGraph.PutPixel(X,Y,MapC(C));
+End;
+{$ELSE}
+Procedure SetColor(C:LongInt);
+Begin
+ Graph.SetColor(Word(C));
+End;
+
+Procedure SetFillStyle(Pat:Word;C:LongInt);
+Begin
+ Graph.SetFillStyle(Pat,Word(C));
+End;
+
+Procedure PutPixel(X,Y:Integer;C:LongInt);
+Begin
+ Graph.PutPixel(X,Y,Word(C));
 End;
 {$ENDIF}
 
@@ -1785,8 +1893,8 @@ Begin
  AddTown(55000.0,25000.0,1500.0,12,25.0);
 
  For I:=0 to MAX_CLD-1 do Begin
-  Clds[I].X:=(RandR-0.5)*150000.0;
-  Clds[I].Y:=(RandR-0.5)*150000.0;
+  Clds[I].X:=RandR*CLOUD_CELL;
+  Clds[I].Y:=RandR*CLOUD_CELL;
   Clds[I].Z:=1600.0+RandR*1000.0;
   Clds[I].R:=500.0+RandR*900.0;
  End;
@@ -2973,7 +3081,7 @@ Procedure StepPhysics(Var F:TFlt;Dt:Real);
 Var
  Sp:TSpec;
  M,Rho,V,Q,Al,Be,CL,CD,Lm,Dm,Ym,Tm,FlapF,GearF,Ce,Ce2,Tgt:Real;
- Vf,Vr,Vu,Tmp,Tur:Real;
+ Vf,Vr,Vu,Tmp,Tur,TCeil:Real;
  Va,Vh,Ll,Acc,OldF,OldR,OldU,Td:TVec;
  Ps,Th,Rl,Pr,Qr,Yr,Gam:Real;
  Stall,SWarn:Boolean;
@@ -3034,6 +3142,7 @@ Begin
  GearF:=0.0;
  If Sp.Retract Then GearF:=F.GearPos;
  Aero(Sp,Al,FlapF,GearF,F.Mach,CL,CD,Stall,SWarn);
+ CD:=CD*(1.0+0.03*WxRain);
  { effet de sol }
  AGL:=F.P.Z-TerH-Sp.GearH;
  Gf:=Clamp(1.0-AGL/Sp.Span,0.0,1.0)*Sp.GroundFx;
@@ -3059,11 +3168,11 @@ Begin
  Acc.Z:=(Lm*Ll.Z-Dm*Vh.Z+Ym*F.R.Z+Tm*Td.Z)/M-G0;
  F.GLoad:=(Lm*Dot(Ll,F.U)-Dm*Dot(Vh,F.U)+Tm*Dot(Td,F.U))/(M*G0);
 
- { turbulence }
- If(Wind.X<>0.0)or(Wind.Y<>0.0)Then Begin
-  Tur:=0.6;
-  If Sqrt(Wind.X*Wind.X+Wind.Y*Wind.Y)>7.0 Then Tur:=1.6;
-  If F.P.Z<3000.0 Then Begin
+ { turbulence (vent et meteo) }
+ If Turb>0.0 Then Begin
+  Tur:=Turb;
+  If Turb>2.0 Then TCeil:=9000.0 Else TCeil:=3000.0;
+  If F.P.Z<TCeil Then Begin
    Acc.X:=Acc.X+(RandR-0.5)*Tur;
    Acc.Y:=Acc.Y+(RandR-0.5)*Tur;
    Acc.Z:=Acc.Z+(RandR-0.5)*Tur*1.5;
@@ -3173,9 +3282,11 @@ Begin
     If Sp2<0.0 Then Sp2:=0.0;
     If Wat and Sp.Float Then Mu:=0.03+0.0003*Hs Else
     If F.Belly Then Mu:=0.45 Else
-    If OnPaved(F.P.X,F.P.Y)Then Mu:=0.02 Else Mu:=0.07;
+    If OnPaved(F.P.X,F.P.Y)Then Mu:=0.02+0.025*WxRain
+                           Else Mu:=0.07+0.04*WxRain;
     If Sp.Cat='C' Then Mu:=0.15;
-    If F.Brakes and(Not F.Belly)and(Not Wat)Then Mu:=Mu+Sp.BrakeMu;
+    If F.Brakes and(Not F.Belly)and(Not Wat)Then
+     Mu:=Mu+Sp.BrakeMu*(1.0-0.55*WxRain);
     Nf:=Clamp(1.0-Lm*Ll.Z/(M*G0),0.0,1.0);
     Sp2:=Sp2-Mu*Nf*G0*Dt;
     If Sp2<0.0 Then Sp2:=0.0;
@@ -3261,6 +3372,210 @@ Begin
 End;
 
 { ------------------------------------------------------------------ }
+{ Meteo : ensoleille, nuageux, pluie, orage, tornade, aleatoire      }
+{ ------------------------------------------------------------------ }
+
+Const
+ { valeurs cibles de chaque condition (soleil, nuageux, pluie, orage, tornade) }
+ T_COVER : Array[0..4] Of Real = (0.0,1.0,1.0,1.0,0.85);
+ T_CEIL  : Array[0..4] Of Real = (1.0,0.55,0.33,0.38,0.40);
+ T_RAIN  : Array[0..4] Of Real = (0.0,0.0,0.6,1.0,0.35);
+ T_DARK  : Array[0..4] Of Real = (0.0,0.18,0.5,1.0,0.9);
+ T_VIS   : Array[0..4] Of Real = (40000.0,18000.0,7000.0,4000.0,6000.0);
+ T_TURB  : Array[0..4] Of Real = (0.0,0.5,1.0,3.2,3.0);
+ T_WIND  : Array[0..4] Of Real = (0.0,4.0,7.0,14.0,12.0);
+
+{ Intensite de l'orage (0 a 1) d'apres la noirceur du ciel }
+Function StormK:Real;
+Begin
+ StormK:=Clamp((WxDark-0.4)/0.6,0.0,1.0);
+End;
+
+{ Fraction de ciel nuageux (0 a 1) }
+Function CloudyK:Real;
+Begin
+ CloudyK:=Clamp(WxCover,0.0,1.0);
+End;
+
+{ Nombre de nuages affiches }
+Function CloudCount:Integer;
+Begin
+ CloudCount:=Round(8.0+(MAX_CLD-8)*CloudyK);
+End;
+
+{ Position d'un nuage : le champ se repete tous les CLOUD_CELL metres
+  autour de l'avion ; l'altitude et la taille suivent la meteo }
+Procedure CloudPos(I:Integer;Const PP:TVec;Var X,Y,Z,R:Real);
+Begin
+ X:=Clds[I].X+CLOUD_CELL*Round((PP.X-Clds[I].X)/CLOUD_CELL);
+ Y:=Clds[I].Y+CLOUD_CELL*Round((PP.Y-Clds[I].Y)/CLOUD_CELL);
+ Z:=MaxR(350.0,Clds[I].Z*WxCeil);
+ R:=Clds[I].R*(1.0+0.8*CloudyK);
+End;
+
+Procedure SpawnTornado(RX,RY:Real);
+Var
+ A:Real;
+Begin
+ A:=RandR*2.0*Pi;
+ TorX:=RX+Cos(A)*7500.0;
+ TorY:=RY+Sin(A)*7500.0;
+ A:=RandR*2.0*Pi;
+ TorVX:=Cos(A)*7.0;
+ TorVY:=Sin(A)*7.0;
+ TorOn:=True;
+End;
+
+{ Fixe la condition meteo ; Instant : les valeurs courantes sautent a la cible }
+Procedure SetWeather(RX,RY:Real;K:Integer;Instant:Boolean);
+Begin
+ Wx:=K;
+ If K=WX_TORN Then SpawnTornado(RX,RY) Else TorOn:=False;
+ If Instant Then Begin
+  WxCover:=T_COVER[K]; WxCeil:=T_CEIL[K]; WxRain:=T_RAIN[K];
+  WxDark:=T_DARK[K]; WxVis:=T_VIS[K]; WxTurb:=T_TURB[K];
+  WxWindMin:=T_WIND[K];
+ End;
+End;
+
+{ Vent de base : reglage du menu, releve au minimum impose par la meteo }
+Procedure ComputeWindBase;
+Var
+ S,D:Real;
+Begin
+ Case OptWind of
+  1:Begin S:=8.0/KT;  D:=250.0; End;
+  2:Begin S:=20.0/KT; D:=300.0; End;
+  Else Begin S:=0.0; D:=270.0; End;
+ End;
+ If WxWindMin>S Then S:=WxWindMin;
+ VSet(WindBase,-Sin(D*Pi/180.0)*S,-Cos(D*Pi/180.0)*S,0.0);
+End;
+
+{ Preparation de la meteo au debut du vol }
+Procedure InitWeather(RX,RY:Real);
+Var
+ K:Integer;
+Begin
+ K:=OptWeather;
+ If K>=WX_RAND Then K:=Random(5);
+ TorOn:=False;
+ SetWeather(RX,RY,K,True);
+ WxTime:=0.0;
+ WxNext:=150.0+Random(150);
+ FlashT:=0.0;
+ LightT:=3.0+Random(5);
+ TorDist:=1E9;
+ Turb:=0.0;
+ ComputeWindBase;
+ Wind:=WindBase;
+End;
+
+{ Nouvel eclair : un trait de la base des nuages au sol }
+Procedure NewBolt(Const P:TVec);
+Var
+ A,D,X,Y,Top:Real;
+ K:Integer;
+Begin
+ A:=RandR*2.0*Pi;
+ D:=2500.0+RandR*4500.0;
+ X:=P.X+Cos(A)*D;
+ Y:=P.Y+Sin(A)*D;
+ Top:=MaxR(450.0,1900.0*WxCeil);
+ For K:=0 to 8 do Begin
+  VSet(Bolt[K],X+(RandR-0.5)*260.0*Ord(K>0)*Ord(K<8),
+       Y+(RandR-0.5)*260.0*Ord(K>0)*Ord(K<8),Top*(1.0-K/8.0));
+ End;
+End;
+
+{ Mise a jour de la meteo et de ses effets sur l'avion (Dt en secondes) }
+Procedure UpdateWeather(Var F:TFlt;Dt:Real);
+Var
+ K,I:Integer;
+ Bl,Gust,Wz,Win,WM,SK,Dx,Dy,D,Sd,Pull,Tang,Up,Z,T:Real;
+Begin
+ T:=F.FlightT;
+ WxTime:=WxTime+Dt;
+ { fondu vers la condition cible }
+ Bl:=MinR(1.0,Dt*0.12);
+ WxCover:=WxCover+(T_COVER[Wx]-WxCover)*Bl;
+ WxCeil:=WxCeil+(T_CEIL[Wx]-WxCeil)*Bl;
+ WxRain:=WxRain+(T_RAIN[Wx]-WxRain)*Bl;
+ WxDark:=WxDark+(T_DARK[Wx]-WxDark)*Bl;
+ WxVis:=WxVis+(T_VIS[Wx]-WxVis)*Bl;
+ WxTurb:=WxTurb+(T_TURB[Wx]-WxTurb)*Bl;
+ WxWindMin:=WxWindMin+(T_WIND[Wx]-WxWindMin)*Bl;
+ { changement de meteo en vol (mode aleatoire) }
+ If(OptWeather>=WX_RAND)and(WxTime>WxNext)Then Begin
+  K:=Random(4);
+  If K>=Wx Then Inc(K);
+  SetWeather(F.P.X,F.P.Y,K,False);
+  WxTime:=0.0;
+  WxNext:=150.0+Random(180);
+  SetMsg(Tr(W_WXCHG)+' : '+Tr(M_WX_SUN+K),Yellow,5.0);
+ End;
+ ComputeWindBase;
+ SK:=StormK;
+ { rafales et courants verticaux }
+ Gust:=1.0+(0.15*WxRain+0.5*SK)*Sin(T*0.9)*Sin(T*0.37+1.3);
+ Wind.X:=WindBase.X*Gust;
+ Wind.Y:=WindBase.Y*Gust;
+ Wz:=0.0;
+ If SK>0.05 Then Begin
+  Win:=Clamp((F.P.Z-150.0)/400.0,0.0,1.0)*Clamp((7000.0-F.P.Z)/800.0,0.0,1.0);
+  Wz:=11.0*SK*Sin(F.P.X/1900.0+T*0.23)*Cos(F.P.Y/2400.0-T*0.17)*Win;
+ End;
+ Wind.Z:=Wz;
+ { turbulence }
+ WM:=Sqrt(WindBase.X*WindBase.X+WindBase.Y*WindBase.Y);
+ Turb:=0.0;
+ If WM>0.1 Then Turb:=0.6;
+ If WM>7.0 Then Turb:=1.6;
+ If WxTurb>Turb Then Turb:=WxTurb;
+ { eclairs }
+ If FlashT>0.0 Then FlashT:=FlashT-Dt;
+ If SK>0.45 Then Begin
+  LightT:=LightT-Dt;
+  If LightT<=0.0 Then Begin
+   FlashT:=0.3;
+   LightT:=1.5+RandR*6.0/SK;
+   NewBolt(F.P);
+  End;
+ End;
+ { tornade }
+ TorDist:=1E9;
+ If TorOn Then Begin
+  Sd:=Sqrt(TorVX*TorVX+TorVY*TorVY);
+  D:=ArcTan(TorVY/(TorVX+1E-6));
+  If TorVX<0.0 Then D:=D+Pi;
+  D:=D+(RandR-0.5)*0.12*Dt;
+  TorVX:=Cos(D)*Sd;
+  TorVY:=Sin(D)*Sd;
+  TorX:=TorX+TorVX*Dt;
+  TorY:=TorY+TorVY*Dt;
+  Dx:=F.P.X-TorX;
+  Dy:=F.P.Y-TorY;
+  D:=Sqrt(Dx*Dx+Dy*Dy);
+  If D>45000.0 Then SpawnTornado(F.P.X,F.P.Y)
+  Else Begin
+   TorDist:=D;
+   Z:=F.P.Z;
+   If(D<2500.0)and(Z<3000.0)and(Not F.Crashed)Then Begin
+    Sd:=Sqr(1.0-D/2500.0);
+    Win:=Clamp((2800.0-Z)/700.0,0.0,1.0);
+    Pull:=30.0*Sd*Win;
+    Tang:=45.0*Sd*Win;
+    Up:=28.0*Sd*Win;
+    If D<1.0 Then D:=1.0;
+    F.V.X:=F.V.X+(-Dx/D*Pull-Dy/D*Tang)*Dt;
+    F.V.Y:=F.V.Y+(-Dy/D*Pull+Dx/D*Tang)*Dt;
+    F.V.Z:=F.V.Z+Up*Dt;
+    If(D<150.0)and(Z<2400.0)Then DoCrash(F,C_TORNADO);
+   End;
+  End;
+ End;
+End;
+{ ------------------------------------------------------------------ }
 { Preparation du vol                                                 }
 { ------------------------------------------------------------------ }
 
@@ -3309,7 +3624,6 @@ Procedure SetupFlight(Var F:TFlt);
 Var
  Sp:TSpec;
  X,Y,Hdg,Psi,Dist,Spd,Gam,Cr:Real;
- WS,WD:Real;
  Ap:Integer;
 Begin
  FillChar(F,SizeOf(F),0);
@@ -3323,15 +3637,9 @@ Begin
  F.GearPos:=1.0;
  Night:=(OptNight=1);
 
- { vent : direction d'ou il vient, vitesse }
- Case OptWind of
-  1:Begin WS:=8.0/KT;  WD:=250.0; End;
-  2:Begin WS:=20.0/KT; WD:=300.0; End;
-  Else Begin WS:=0.0; WD:=0.0; End;
- End;
- VSet(Wind,-Sin(WD*Pi/180.0)*WS,-Cos(WD*Pi/180.0)*WS,0.0);
-
+ { meteo et vent (la tornade apparait a 7,5 km de l'aeroport) }
  Ap:=OptAirport;
+ InitWeather(Aps[Ap].X,Aps[Ap].Y);
  DestAp:=(Ap+1)mod NB_AIRPORT;
  RunwayEnd(Ap,0,X,Y,Hdg);
  Psi:=Hdg*Pi/180.0;
@@ -3406,6 +3714,177 @@ Begin
  StopShown:=False;
 End;
 
+{ ------------------------------------------------------------------ }
+{ Meteo : couleurs du ciel, brume                                    }
+{ ------------------------------------------------------------------ }
+
+Function Mix(A,B,T:Real):Real;
+Begin
+ Mix:=A+(B-A)*T;
+End;
+
+{ Couleur du ciel (zenith) et de l'horizon, en RGB, selon la meteo }
+Procedure WxSkyRGB(Var TR,TG,TB,HR,HG,HB:Real);
+Var
+ Cl,Dk:Real;
+Begin
+ Cl:=Clamp(WxCover*0.85+WxRain*0.4,0.0,1.0);
+ Dk:=Clamp(WxDark,0.0,1.0);
+ TR:=Mix(Mix(50.0,120.0,Cl),38.0,Dk);
+ TG:=Mix(Mix(110.0,128.0,Cl),42.0,Dk);
+ TB:=Mix(Mix(225.0,142.0,Cl),54.0,Dk);
+ HR:=Mix(Mix(175.0,192.0,Cl),96.0,Dk);
+ HG:=Mix(Mix(215.0,196.0,Cl),100.0,Dk);
+ HB:=Mix(Mix(245.0,202.0,Cl),110.0,Dk);
+End;
+
+{ Couleur du ciel dans les modes a 16 couleurs }
+Function WxSkyIdx:Integer;
+Begin
+ If WxDark>0.55 Then WxSkyIdx:=DarkGray Else
+ If WxCover>0.5 Then WxSkyIdx:=LightGray
+                Else WxSkyIdx:=LightCyan;
+End;
+
+Function WxFogIdx:Integer;
+Begin
+ If WxDark>0.55 Then WxFogIdx:=DarkGray Else WxFogIdx:=LightGray;
+End;
+
+{ Fraction de brume (0 a 1) pour un objet situe a la distance D }
+Function FogAmount(D:Real):Real;
+Var
+ F:Real;
+Begin
+ F:=(D/WxVis-0.35)/0.65;
+ If F<0.0 Then F:=0.0;
+ If F>1.0 Then F:=1.0;
+ FogAmount:=F*F;
+End;
+
+{ Couleur d'un objet eloigne : fondue dans la brume }
+Function WxFogCol(Col:LongInt;D:Real):LongInt;
+Var
+ F,TR,TG,TB,HR,HG,HB:Real;
+ R,G,B:LongInt;
+ V:LongInt;
+Begin
+ F:=FogAmount(D);
+ If(F<=0.01)or Night Then Begin WxFogCol:=Col; Exit; End;
+ {$IFDEF FPC}
+ If TrueMode Then Begin
+  WxSkyRGB(TR,TG,TB,HR,HG,HB);
+  If(Col>=0)and(Col<=15)Then V:=UiRGB[Col] Else V:=Col;
+  R:=Round(((V shr 16)and 255)*(1.0-F)+HR*F);
+  G:=Round(((V shr 8)and 255)*(1.0-F)+HG*F);
+  B:=Round((V and 255)*(1.0-F)+HB*F);
+  V:=(R shl 16)or(G shl 8)or B;
+  If V<=15 Then V:=16;
+  WxFogCol:=V;
+  Exit;
+ End;
+ {$ENDIF}
+ If F>0.55 Then WxFogCol:=WxFogIdx Else WxFogCol:=Col;
+End;
+
+{ Decoupage d'un polygone par le demi-plan A*x+B*y+C >= 0 }
+Function ClipHalf(Var Src:TPoly2;N:Integer;Var Dst:TPoly2;A,B,C:Real):Integer;
+Var
+ I,J,M:Integer;
+ Sv,Ev,T:Real;
+Begin
+ M:=0;
+ For I:=0 to N-1 do Begin
+  J:=(I+N-1)mod N;
+  Sv:=A*Src[J].X+B*Src[J].Y+C;
+  Ev:=A*Src[I].X+B*Src[I].Y+C;
+  If(Sv>=0.0)<>(Ev>=0.0)Then Begin
+   T:=Sv/(Sv-Ev);
+   Dst[M].X:=Src[J].X+T*(Src[I].X-Src[J].X);
+   Dst[M].Y:=Src[J].Y+T*(Src[I].Y-Src[J].Y);
+   Inc(M);
+  End;
+  If Ev>=0.0 Then Begin
+   Dst[M]:=Src[I];
+   Inc(M);
+  End;
+ End;
+ ClipHalf:=M;
+End;
+
+{ Remplit la bande de l'ecran situee entre les distances Lo et Hi
+  (en pixels) de l'horizon : G = Ag*sx+Bg*sy+Cg, G<=0 cote sol.
+  Sol = True : bande sous l'horizon ; sinon au-dessus. }
+Procedure HazeBand(Ag,Bg,Cg,Gm,Lo,Hi:Real;Ground:Boolean;Col:LongInt);
+Var
+ P1,P2:TPoly2;
+ N,I:Integer;
+ Pts:Array[0..39] Of PointType;
+Begin
+ P1[0].X:=VX1; P1[0].Y:=VY1;
+ P1[1].X:=VX2; P1[1].Y:=VY1;
+ P1[2].X:=VX2; P1[2].Y:=VY2;
+ P1[3].X:=VX1; P1[3].Y:=VY2;
+ N:=4;
+ If Ground Then Begin
+  { -Hi*Gm <= G <= -Lo*Gm }
+  N:=ClipHalf(P1,N,P2,Ag,Bg,Cg+Hi*Gm);
+  If N<3 Then Exit;
+  N:=ClipHalf(P2,N,P1,-Ag,-Bg,-Cg-Lo*Gm);
+ End
+  Else Begin
+   { Lo*Gm <= G <= Hi*Gm }
+   N:=ClipHalf(P1,N,P2,Ag,Bg,Cg-Lo*Gm);
+   If N<3 Then Exit;
+   N:=ClipHalf(P2,N,P1,-Ag,-Bg,-Cg+Hi*Gm);
+  End;
+ If N<3 Then Exit;
+ For I:=0 to N-1 do Begin
+  Pts[I].X:=Round(P1[I].X);
+  Pts[I].Y:=Round(P1[I].Y);
+ End;
+ SetFillStyle(SolidFill,Col);
+ SetColor(Col);
+ FillPoly(N,Pts);
+End;
+
+{ Brume a l'horizon : plus epaisse quand la visibilite baisse }
+Procedure DrawHaze(Ag,Bg,Cg:Real);
+Var
+ Gm,Hpx,TR,TG,TB,HR,HG,HB,T:Real;
+ K,Nb:Integer;
+ Col:LongInt;
+Begin
+ If Night or(WxVis>32000.0)Then Exit;
+ Gm:=Sqrt(Ag*Ag+Bg*Bg);
+ If Gm<1E-9 Then Exit;
+ Hpx:=(14.0+(1.0-WxVis/40000.0)*75.0)*ViewW/640.0;
+ WxSkyRGB(TR,TG,TB,HR,HG,HB);
+ Nb:=1;
+ {$IFDEF FPC}
+ If TrueMode Then Nb:=7;
+ {$ENDIF}
+ For K:=Nb-1 downto 0 do Begin
+  T:=(K+0.5)/Nb;
+  {$IFDEF FPC}
+  If TrueMode Then Begin
+   { sol : de la brume (horizon) vers le vert (proche) }
+   Col:=(Round(Mix(HR,0.0,T))shl 16)or(Round(Mix(HG,170.0,T))shl 8)or
+        Round(Mix(HB,0.0,T));
+   HazeBand(Ag,Bg,Cg,Gm,Hpx*K/Nb,Hpx*(K+1)/Nb,True,Col);
+   { ciel : de la brume vers la couleur du ciel }
+   Col:=(Round(Mix(HR,TR,T*0.8))shl 16)or(Round(Mix(HG,TG,T*0.8))shl 8)or
+        Round(Mix(HB,TB,T*0.8));
+   HazeBand(Ag,Bg,Cg,Gm,Hpx*0.8*K/Nb,Hpx*0.8*(K+1)/Nb,False,Col);
+  End
+   Else
+  {$ENDIF}
+  Begin
+   HazeBand(Ag,Bg,Cg,Gm,0.0,Hpx*0.45,True,WxFogIdx);
+   HazeBand(Ag,Bg,Cg,Gm,0.0,Hpx*0.3,False,WxFogIdx);
+  End;
+ End;
+End;
 { ------------------------------------------------------------------ }
 { Moteur 3D : projection, decoupage, polygones                      }
 { ------------------------------------------------------------------ }
@@ -3638,20 +4117,26 @@ Var
  V:TVec;
  SkyCol,GndCol:Integer;
  Y0:Integer;
- T:Real;
+ T,TR,TG,TB,HR,HG,HB:Real;
 Begin
  If Night Then Begin SkyCol:=Black; GndCol:=Black; End
-          Else Begin SkyCol:=LightCyan; GndCol:=Green; End;
+          Else Begin SkyCol:=WxSkyIdx; GndCol:=Green; End;
+ { eclair : le ciel s'illumine }
+ If(FlashT>0.0)and(Not Odd(Trunc(FlashT*30.0)div 2))Then SkyCol:=White;
  SetFillStyle(SolidFill,SkyCol);
  Bar(VX1,VY1,VX2,VY2);
 {$IFDEF FPC}
  If TrueMode and(Not Night)Then Begin
   { degrade de ciel : plus fonce vers le zenith }
+  WxSkyRGB(TR,TG,TB,HR,HG,HB);
   Y0:=VY1;
   While Y0<=VY2 do Begin
    T:=Clamp((C.CY-Y0)/C.CY,0.0,1.0);
-   SetFillStyle(SolidFill,(Round(175.0-125.0*T)shl 16)or
-                (Round(215.0-95.0*T)shl 8)or Round(245.0-20.0*T));
+   If(FlashT>0.0)and(Not Odd(Trunc(FlashT*30.0)div 2))Then
+    SetFillStyle(SolidFill,(235 shl 16)or(240 shl 8)or 255)
+   Else
+    SetFillStyle(SolidFill,(Round(HR-(HR-TR)*T)shl 16)or
+                 (Round(HG-(HG-TG)*T)shl 8)or Round(HB-(HB-TB)*T));
    Bar(VX1,Y0,VX2,Y0+3);
    Y0:=Y0+4;
   End;
@@ -3729,6 +4214,7 @@ Begin
  If OptDetail=2 Then Begin CS:=1200.0; R:=9000.0; End
                 Else Begin CS:=800.0;  R:=8000.0; End;
  If C.P.Z>2500.0 Then Begin CS:=CS*2.0; R:=R*2.0; End;
+ If R>WxVis Then R:=WxVis;
  AX:=Trunc(C.P.X/CS);
  AY:=Trunc(C.P.Y/CS);
  N:=Trunc(R/CS)+1;
@@ -3761,13 +4247,13 @@ Begin
  If Night Then Col:=Blue Else Col:=Blue;
  For I:=0 to MAX_LAKE-1 do Begin
   D:=Sqrt(Sqr(Lakes[I].X-C.P.X)+Sqr(Lakes[I].Y-C.P.Y));
-  If D>Lakes[I].RX+60000.0 Then Continue;
+  If D>Lakes[I].RX+MinR(60000.0,WxVis*1.3)Then Continue;
   For K:=0 to 13 do Begin
    A:=K*2.0*Pi/14.0;
    VSet(P[K],Lakes[I].X+Cos(A)*Lakes[I].RX*(1.0+0.12*Sin(3.0*A)),
         Lakes[I].Y+Sin(A)*Lakes[I].RY*(1.0+0.12*Cos(2.0*A)),0.05);
   End;
-  DrawPoly3D(C,P,14,Col,-1);
+  DrawPoly3D(C,P,14,WxFogCol(Col,D),-1);
  End;
 End;
 
@@ -3784,7 +4270,7 @@ Var
  Gr:Integer;
 Begin
  D:=Sqrt(Sqr(Aps[I].X-C.P.X)+Sqr(Aps[I].Y-C.P.Y));
- If D>90000.0 Then Exit;
+ If D>MinR(90000.0,WxVis*1.3+Aps[I].Len)Then Exit;
  L:=Aps[I].Len; W:=Aps[I].Wid; HL:=L/2.0;
  Near:=(D<L/2.0+7000.0);
  Mid:=(D<L/2.0+16000.0);
@@ -3856,6 +4342,148 @@ Begin
  End;
 End;
 
+{ ------------------------------------------------------------------ }
+{ Meteo : tornade, eclairs, pluie                                    }
+{ ------------------------------------------------------------------ }
+
+{ Entonnoir de la tornade : tranches empilees, de la base au nuage }
+Procedure DrawTornado(Const C:TCam);
+Const
+ NL = 14;
+Var
+ K,I:Integer;
+ Hmax,H0,H1,R0,R1,Z0,Z1,W0,W1,SX0,SY0,SX1,SY1,Ph,T0,T1,G:Real;
+ P0,P1:TVec;
+ Pts:Array[0..3] Of PointType;
+ Col:LongInt;
+ Ok0,Ok1:Boolean;
+ Th:Real;
+ DX,DY,DR:Real;
+Begin
+ If Not TorOn Then Exit;
+ Th:=TerrainH(TorX,TorY);
+ Hmax:=MaxR(500.0,1900.0*WxCeil*0.9);
+ Ph:=FrameNo*0.05;
+ { poussiere au sol }
+ VSet(P0,TorX,TorY,Th+15.0);
+ If Proj(C,P0,SX0,SY0,Z0)Then Begin
+  W0:=160.0*C.Foc/Z0;
+  If W0>3000.0 Then W0:=3000.0;
+  SetFillStyle(SolidFill,Brown);
+  SetColor(Brown);
+  {$IFDEF FPC}
+  If TrueMode Then Begin
+   SetFillStyle(SolidFill,(110 shl 16)or(88 shl 8)or 66);
+   SetColor((110 shl 16)or(88 shl 8)or 66);
+  End;
+  {$ENDIF}
+  FillEllipse(Round(SX0),Round(SY0),Round(W0),Round(W0*0.3)+1);
+ End;
+ For K:=0 to NL-1 do Begin
+  H0:=K/NL*Hmax; H1:=(K+1)/NL*Hmax;
+  T0:=H0/Hmax; T1:=H1/Hmax;
+  R0:=22.0+360.0*Exp(2.2*Ln(MaxR(T0,0.001)));
+  R1:=22.0+360.0*Exp(2.2*Ln(MaxR(T1,0.001)));
+  VSet(P0,TorX+90.0*Exp(1.4*Ln(MaxR(T0,0.001)))*Cos(Ph+H0*0.004),
+          TorY+90.0*Exp(1.4*Ln(MaxR(T0,0.001)))*Sin(Ph+H0*0.004),Th+H0);
+  VSet(P1,TorX+90.0*Exp(1.4*Ln(MaxR(T1,0.001)))*Cos(Ph+H1*0.004),
+          TorY+90.0*Exp(1.4*Ln(MaxR(T1,0.001)))*Sin(Ph+H1*0.004),Th+H1);
+  Ok0:=Proj(C,P0,SX0,SY0,Z0);
+  Ok1:=Proj(C,P1,SX1,SY1,Z1);
+  If Ok0 and Ok1 Then Begin
+   W0:=R0*C.Foc/Z0; W1:=R1*C.Foc/Z1;
+   If W0>6000.0 Then W0:=6000.0;
+   If W1>6000.0 Then W1:=6000.0;
+   Pts[0].X:=Round(SX0-W0); Pts[0].Y:=Round(SY0);
+   Pts[1].X:=Round(SX0+W0); Pts[1].Y:=Round(SY0);
+   Pts[2].X:=Round(SX1+W1); Pts[2].Y:=Round(SY1);
+   Pts[3].X:=Round(SX1-W1); Pts[3].Y:=Round(SY1);
+   If((K+FrameNo div 3)and 1)=0 Then G:=0.0 Else G:=1.0;
+   {$IFDEF FPC}
+   If TrueMode Then Begin
+    { gris sombre, plus clair et brun vers le sol }
+    I:=Round(58.0+G*26.0+(1.0-T0)*30.0);
+    Col:=(Round(I+(1.0-T0)*26.0)shl 16)or(Round(I+(1.0-T0)*8.0)shl 8)or I;
+   End
+    Else
+   {$ENDIF}
+   Begin
+    If G>0.5 Then Col:=LightGray Else Col:=DarkGray;
+    If(T0<0.15)and(G<0.5)Then Col:=Brown;
+   End;
+   SetFillStyle(SolidFill,Col);
+   SetColor(Col);
+   FillPoly(4,Pts);
+  End;
+ End;
+ { masse nuageuse sombre au sommet }
+ VSet(P0,TorX,TorY,Th+Hmax+60.0);
+ If Proj(C,P0,SX0,SY0,Z0)Then Begin
+  W0:=700.0*C.Foc/Z0;
+  If W0>6000.0 Then W0:=6000.0;
+  Col:=DarkGray;
+  {$IFDEF FPC}
+  If TrueMode Then Col:=(52 shl 16)or(54 shl 8)or 62;
+  {$ENDIF}
+  SetFillStyle(SolidFill,Col);
+  SetColor(Col);
+  FillEllipse(Round(SX0),Round(SY0),Round(W0),Round(W0*0.32)+1);
+ End;
+ { debris projetes autour de la base }
+ For I:=1 to 22 do Begin
+  DR:=40.0+RandR*260.0;
+  DX:=Cos(RandR*6.2832)*DR;
+  DY:=Sin(RandR*6.2832)*DR;
+  VSet(P0,TorX+DX,TorY+DY,Th+RandR*260.0);
+  If Proj(C,P0,SX0,SY0,Z0)Then Begin
+   W0:=2.0+4.0*C.Foc/Z0*2.5;
+   If W0>14.0 Then W0:=14.0;
+   If I mod 3=0 Then Col:=Brown Else Col:=DarkGray;
+   SetFillStyle(SolidFill,Col);
+   Bar(Round(SX0),Round(SY0),Round(SX0+W0),Round(SY0+W0*0.5));
+  End;
+ End;
+ SetFillStyle(SolidFill,White);
+End;
+
+{ Eclair, pluie : superposes a la vue 3D }
+Procedure DrawWeatherFX(Const C:TCam);
+Var
+ K,N,X,Y,L,Sl:Integer;
+ A,B:TVec;
+ RC:LongInt;
+Begin
+ { eclair }
+ If(FlashT>0.0)and(Not Odd(Trunc(FlashT*30.0)div 2))Then
+  For K:=0 to 7 do Begin
+   A:=Bolt[K]; B:=Bolt[K+1];
+   DrawLine3D(C,A,B,White);
+   A.X:=A.X+6.0; B.X:=B.X+6.0;
+   DrawLine3D(C,A,B,Yellow);
+  End;
+ { pluie : traits obliques qui defilent }
+ If WxRain>0.03 Then Begin
+  N:=Round(WxRain*(70.0+ViewW/5.0));
+  RC:=LightGray;
+  {$IFDEF FPC}
+  If TrueMode Then RC:=(180 shl 16)or(194 shl 8)or 214;
+  {$ENDIF}
+  If Night Then Begin
+   RC:=DarkGray;
+   {$IFDEF FPC}
+   If TrueMode Then RC:=(70 shl 16)or(76 shl 8)or 92;
+   {$ENDIF}
+  End;
+  SetColor(RC);
+  For K:=1 to N do Begin
+   X:=Random(ViewW);
+   Y:=Random(ViewH);
+   L:=8+Random(12);
+   Sl:=2+Random(3);
+   Line(X,Y,X-Sl,Y+L);
+  End;
+ End;
+End;
 { ------------------------------------------------------------------ }
 { Affichage du modele : ombrage, helices, flammes, feux                }
 { ------------------------------------------------------------------ }
@@ -4321,8 +4949,10 @@ Var
  MX,MY:Real;
  Ap,FC:TVec;
  P:TPoly3;
- CL,CU,CC,OL:Integer;
+ CL,CU,CC,OL:LongInt;
+ DM:Real;
 Begin
+ DM:=Sqrt(Sqr(Mtns[I].X-C.P.X)+Sqr(Mtns[I].Y-C.P.Y));
  MX:=Mtns[I].X; MY:=Mtns[I].Y; R:=Mtns[I].R; H:=Mtns[I].H;
  VSet(Ap,MX,MY,H);
  For K:=0 to NSEG-1 do Begin
@@ -4345,6 +4975,7 @@ Begin
    If S>0.1  Then Begin CL:=Green; CU:=Brown;     CC:=LightGray; End
             Else Begin CL:=DarkGray; CU:=DarkGray; CC:=LightGray; End;
    If H<1900.0 Then CC:=CU;
+   CL:=WxFogCol(CL,DM); CU:=WxFogCol(CU,DM); CC:=WxFogCol(CC,DM);
   End;
   { pente basse }
   VSet(P[0],MX+R*Cos(A0),MY+R*Sin(A0),0.0);
@@ -4370,11 +5001,12 @@ Procedure DrawBuilding(Const C:TCam;I:Integer);
 Var
  X0,X1,Y0,Y1,ZB,ZT,D:Real;
  P:TPoly3;
- Col,Roof,Lit,Shade,OL:Integer;
+ Col,Roof,Lit,Shade,OL:LongInt;
  K,J:Integer;
  Q:TVec;
  L:TVec;
 Begin
+ D:=Sqrt(Sqr(C.P.X-Blds[I].X)+Sqr(C.P.Y-Blds[I].Y));
  X0:=Blds[I].X-Blds[I].W/2.0; X1:=Blds[I].X+Blds[I].W/2.0;
  Y0:=Blds[I].Y-Blds[I].D/2.0; Y1:=Blds[I].Y+Blds[I].D/2.0;
  ZB:=Blds[I].Z0; ZT:=Blds[I].Z0+Blds[I].H;
@@ -4385,6 +5017,8 @@ Begin
   Else
  Begin
   Lit:=Col; Shade:=DarkOf(Col); OL:=DarkOf(Shade);
+  Lit:=WxFogCol(Lit,D); Shade:=WxFogCol(Shade,D);
+  Roof:=WxFogCol(Roof,D); OL:=WxFogCol(OL,D);
  End;
  { cote +X (eclaire) }
  If C.P.X>X1 Then Begin
@@ -4441,30 +5075,39 @@ Procedure DrawCloud(Const C:TCam;I:Integer);
 Var
  K:Integer;
  V:TVec;
- SX,SY,Z,R:Real;
+ SX,SY,Z,R,CX,CY,CZ,CR,D:Real;
  RR,XR:Integer;
+ Cb,Ct:LongInt;
 Begin
- For K:=0 to 2 do Begin
-  VSet(V,Clds[I].X+C.R.X*(K-1)*Clds[I].R*0.7,
-         Clds[I].Y+C.R.Y*(K-1)*Clds[I].R*0.7,
-         Clds[I].Z+(K mod 2)*Clds[I].R*0.15);
+ CloudPos(I,C.P,CX,CY,CZ,CR);
+ D:=Sqrt(Sqr(CX-C.P.X)+Sqr(CY-C.P.Y)+Sqr(CZ-C.P.Z));
+ If Night Then Begin Cb:=DarkGray; Ct:=DarkGray; End
+ Else If WxDark>0.6 Then Begin Cb:=DarkGray; Ct:=DarkGray; End
+ Else If WxDark>0.25 Then Begin Cb:=DarkGray; Ct:=LightGray; End
+ Else Begin Cb:=LightGray; Ct:=White; End;
+ {$IFDEF FPC}
+ If TrueMode and(Not Night)Then Begin
+  Cb:=(Round(Mix(200.0,40.0,WxDark))shl 16)or
+      (Round(Mix(202.0,42.0,WxDark))shl 8)or
+      Round(Mix(208.0,50.0,WxDark));
+  Ct:=(Round(Mix(250.0,80.0,WxDark))shl 16)or
+      (Round(Mix(250.0,82.0,WxDark))shl 8)or
+      Round(Mix(252.0,92.0,WxDark));
+ End;
+ {$ENDIF}
+ Cb:=WxFogCol(Cb,D); Ct:=WxFogCol(Ct,D);
+ For K:=0 to 4 do Begin
+  VSet(V,CX+C.R.X*(K-2)*CR*0.5,CY+C.R.Y*(K-2)*CR*0.5,
+         CZ+(K mod 2)*CR*0.15-Abs(K-2)*CR*0.04);
   If Proj(C,V,SX,SY,Z)Then Begin
-   R:=Clds[I].R*0.75*C.Foc/Z;
+   R:=CR*0.62*C.Foc/Z;
    If R>2000.0 Then R:=2000.0;
    XR:=Round(R);
    RR:=Round(R*0.45);
    If XR<1 Then Continue;
-   If Night Then Begin
-    SetFillStyle(SolidFill,DarkGray); SetColor(DarkGray);
-   End
-    Else
-   Begin
-    SetFillStyle(SolidFill,LightGray); SetColor(LightGray);
-   End;
+   SetFillStyle(SolidFill,Cb); SetColor(Cb);
    FillEllipse(Round(SX),Round(SY+R*0.12),XR,RR);
-   If Not Night Then Begin
-    SetFillStyle(SolidFill,White); SetColor(White);
-   End;
+   SetFillStyle(SolidFill,Ct); SetColor(Ct);
    FillEllipse(Round(SX),Round(SY-R*0.05),Round(R*0.9),Round(R*0.4));
   End;
  End;
@@ -4883,7 +5526,7 @@ Procedure CollectObjects(Const C:TCam;Var F:TFlt);
 Var
  I:Integer;
  Q,V:TVec;
- D:Real;
+ D,Cr:Real;
 Begin
  NObj:=0;
  InCloud:=False;
@@ -4891,21 +5534,26 @@ Begin
   VSet(V,Mtns[I].X,Mtns[I].Y,0.0);
   ToCam(C,V,Q);
   D:=Sqrt(Q.X*Q.X+Q.Y*Q.Y+Q.Z*Q.Z);
-  If(D<120000.0)and(Q.Z+Mtns[I].R>0.0)Then
+  If(D<120000.0)and(D-Mtns[I].R<WxVis*1.5)and(Q.Z+Mtns[I].R>0.0)Then
    AddObj(OBJ_MTN,I,MaxR(0.0,D-0.7*Mtns[I].R));
  End;
  For I:=0 to NBld-1 do Begin
   VSet(V,Blds[I].X,Blds[I].Y,Blds[I].Z0+Blds[I].H/2.0);
   ToCam(C,V,Q);
   D:=Sqrt(Q.X*Q.X+Q.Y*Q.Y+Q.Z*Q.Z);
-  If(D<18000.0)and(Q.Z>-Blds[I].W-Blds[I].D)Then AddObj(OBJ_BLD,I,D);
+  If(D<MinR(18000.0,WxVis*1.2))and(Q.Z>-Blds[I].W-Blds[I].D)Then
+   AddObj(OBJ_BLD,I,D);
  End;
- For I:=0 to MAX_CLD-1 do Begin
-  VSet(V,Clds[I].X,Clds[I].Y,Clds[I].Z);
+ For I:=0 to CloudCount-1 do Begin
+  CloudPos(I,C.P,V.X,V.Y,V.Z,Cr);
   ToCam(C,V,Q);
   D:=Sqrt(Q.X*Q.X+Q.Y*Q.Y+Q.Z*Q.Z);
-  If D<Clds[I].R*0.8 Then InCloud:=True;
-  If(D<40000.0)and(Q.Z>-Clds[I].R)Then AddObj(OBJ_CLD,I,D);
+  If D<Cr*0.8 Then InCloud:=True;
+  If(D<MinR(45000.0,WxVis*2.0+Cr))and(Q.Z>-Cr)Then AddObj(OBJ_CLD,I,D);
+ End;
+ If TorOn Then Begin
+  D:=Sqrt(Sqr(TorX-C.P.X)+Sqr(TorY-C.P.Y));
+  If D<MinR(40000.0,WxVis*2.2)Then AddObj(OBJ_TORN,0,D);
  End;
  If ViewMode<>VIEW_COCKPIT Then Begin
   D:=Sqrt(Sqr(F.P.X-C.P.X)+Sqr(F.P.Y-C.P.Y)+Sqr(F.P.Z-C.P.Z));
@@ -4944,6 +5592,8 @@ Begin
  DrawFields(C);
  DrawLakes(C);
  For I:=0 to NB_AIRPORT-1 do DrawAirport(C,I);
+ DrawHaze(C.R.Z/C.Foc,-C.U.Z/C.Foc,
+          -C.CX*C.R.Z/C.Foc+C.CY*C.U.Z/C.Foc+C.F.Z);
  CollectObjects(C,F);
  For K:=0 to NObj-1 do
   Case ObjKind[K] of
@@ -4951,11 +5601,14 @@ Begin
    OBJ_BLD:DrawBuilding(C,ObjIdx[K]);
    OBJ_CLD:DrawCloud(C,ObjIdx[K]);
    OBJ_PLANE:DrawPlane(C,F);
+   OBJ_TORN:DrawTornado(C);
   End;
+ DrawWeatherFX(C);
  If InCloud and(ViewMode=VIEW_COCKPIT)Then Begin
-  If Night Then SetFillStyle(SolidFill,DarkGray)
-           Else SetFillStyle(SolidFill,LightGray);
+  If Night or(WxDark>0.5)Then SetFillStyle(SolidFill,DarkGray)
+                         Else SetFillStyle(SolidFill,LightGray);
   Bar(0,0,ViewW-1,ViewH-1);
+  DrawWeatherFX(C);
  End;
  If ViewMode=VIEW_COCKPIT Then DrawCockpitFrame;
 End;
@@ -5005,6 +5658,7 @@ Begin
  If(F.IAS>Sp.Vne)or((F.Mach>Sp.McritW+0.07)and(Sp.WaveK>0.3))Then
   CurrentWarning:=W_OVERSPD;
  If(F.GLoad>Sp.NLim)or(F.GLoad<-Sp.NLim*0.5)Then CurrentWarning:=W_OVERG;
+ If TorDist<6000.0 Then CurrentWarning:=W_TORNADO;
  If Sp.Retract and(Not F.GearDn)and(AGL<250.0)and(F.V.Z<-1.0)and
     (F.Thr<0.4)and(Not F.OnGround)Then CurrentWarning:=W_GEAR;
  If Not F.OnGround Then Begin
@@ -5596,6 +6250,10 @@ Begin
   Exit;
  End;
  If MsgTime>0.0 Then BigText(320,40,MsgText,1,MsgColor);
+ If Wx>WX_SUN Then Begin
+  SetTextStyle(DefaultFont,HorizDir,1);
+  PutText(8,8,Tr(M_WX_SUN+Wx),Yellow);
+ End;
  If Paused Then BigText(320,150,Tr(W_PAUSE),3,White);
  If F.Belly Then BigText(320,60,Tr(C_BELLY),1,LightRed);
 End;
@@ -5663,6 +6321,15 @@ Begin
    Circle(X,Y,10);
   End;
   PutText(X+12,Y-4,Aps[I].Code,White);
+ End;
+ { tornade }
+ If TorOn Then Begin
+  MapXY(F,TorX,TorY,X,Y);
+  SetColor(LightRed);
+  Circle(X,Y,6);
+  Circle(X,Y,10);
+  Line(X-5,Y-5,X+5,Y+5);
+  Line(X-5,Y+5,X+5,Y-5);
  End;
  { route vers la destination }
  MapXY(F,F.P.X,F.P.Y,X,Y);
@@ -5908,15 +6575,16 @@ Begin
       Else OptionText:=Tr(M_WIND)+' : '+Tr(M_STRONG);
      End;
     End;
-  5:Begin
+  5:OptionText:=Tr(M_WEATHER)+' : '+Tr(M_WX_SUN+OptWeather);
+  6:Begin
      Case OptDetail of
       1:OptionText:=Tr(M_DETAIL)+' : '+Tr(M_LOW);
       2:OptionText:=Tr(M_DETAIL)+' : '+Tr(M_MED);
       Else OptionText:=Tr(M_DETAIL)+' : '+Tr(M_HIGH);
      End;
     End;
-  6:OptionText:=Tr(M_ASSIST)+' : '+OnOff(OptAssist);
-  7:OptionText:=Tr(M_FLY);
+  7:OptionText:=Tr(M_ASSIST)+' : '+OnOff(OptAssist);
+  8:OptionText:=Tr(M_FLY);
   Else OptionText:=Tr(M_QUIT);
  End;
 End;
@@ -5932,12 +6600,13 @@ Begin
   2:OptStart:=(OptStart+Dir+3)mod 3;
   3:OptNight:=1-OptNight;
   4:OptWind:=(OptWind+Dir+3)mod 3;
-  5:Begin
+  5:OptWeather:=(OptWeather+Dir+6)mod 6;
+  6:Begin
      OptDetail:=OptDetail+Dir;
      If OptDetail<1 Then OptDetail:=3;
      If OptDetail>3 Then OptDetail:=1;
     End;
-  6:OptAssist:=1-OptAssist;
+  7:OptAssist:=1-OptAssist;
  End;
 End;
 
@@ -6167,7 +6836,7 @@ Var
  Done:Boolean;
  S:String;
 Begin
- Row:=7;
+ Row:=8;
  Done:=False;
  MainMenu:=0;
  NoSound;
@@ -6178,12 +6847,12 @@ Begin
   CenterBig(20,'FLIGHT',6,White);
   CenterBig(78,Tr(M_SUB),2,Yellow);
   SetFillStyle(SolidFill,Blue);
-  Bar(20,142,SCR_W-21,402);
+  Bar(20,138,SCR_W-21,412);
   SetColor(LightCyan);
-  Rectangle(20,142,SCR_W-21,402);
-  Rectangle(23,145,SCR_W-24,399);
-  For I:=0 to 8 do Begin
-   Y:=150+I*28;
+  Rectangle(20,138,SCR_W-21,412);
+  Rectangle(23,141,SCR_W-24,409);
+  For I:=0 to 9 do Begin
+   Y:=146+I*26;
    S:=OptionText(I);
    If Length(S)*16>SCR_W-70 Then SetTextStyle(DefaultFont,HorizDir,1)
                             Else SetTextStyle(DefaultFont,HorizDir,2);
@@ -6198,12 +6867,12 @@ Begin
   End;
   SetTextStyle(DefaultFont,HorizDir,1);
   SetFillStyle(SolidFill,Black);
-  Bar(0,406,SCR_W-1,479);
+  Bar(0,414,SCR_W-1,479);
   If Row=0 Then Begin
    SetColor(Yellow);
-   OutTextXY((SCR_W-Length(Tr(M_ACLIST))*8) div 2,416,Tr(M_ACLIST));
+   OutTextXY((SCR_W-Length(Tr(M_ACLIST))*8) div 2,420,Tr(M_ACLIST));
    SetColor(LightGray);
-   OutTextXY((SCR_W-Length(Specs[SLOT_CUR].Desc)*8) div 2,432,
+   OutTextXY((SCR_W-Length(Specs[SLOT_CUR].Desc)*8) div 2,438,
              Specs[SLOT_CUR].Desc);
   End;
   SetColor(LightGray);
@@ -6213,8 +6882,8 @@ Begin
   If Ch=#0 Then Begin
    Ch:=ReadKey;
    Case Ord(Ch) of
-    72:Row:=(Row+8)mod 9;
-    80:Row:=(Row+1)mod 9;
+    72:Row:=(Row+9)mod 10;
+    80:Row:=(Row+1)mod 10;
     75:ChangeOption(Row,-1);
     77:ChangeOption(Row,1);
     73:If Row=0 Then Begin
@@ -6231,8 +6900,8 @@ Begin
    Else
   Case Ch of
    #13:Begin
-        If Row=8 Then Begin MainMenu:=0; Done:=True; End
-        Else If Row=7 Then Begin MainMenu:=1; Done:=True; End
+        If Row=9 Then Begin MainMenu:=0; Done:=True; End
+        Else If Row=8 Then Begin MainMenu:=1; Done:=True; End
         Else If Row=0 Then PickAircraft
         Else Begin
          ChangeOption(Row,1);
@@ -6430,6 +7099,7 @@ Begin
   Res:=HandleKeys(Fl);
   If Res<>0 Then Break;
   If Not Paused Then Begin
+   UpdateWeather(Fl,Dt);
    If Fl.AP Then UpdateAutopilot(Fl,Dt);
    N:=Trunc(Dt/0.025)+1;
    Sub:=Dt/N;
@@ -6534,6 +7204,8 @@ BEGIN
  OptWind:=0;
  OptDetail:=2;
  OptAssist:=1;
+ OptWeather:=0;
+ InitWeather(0.0,0.0);
  MsgTime:=0.0;
  SoundOn:=False;
  InitGraphicsMode;
