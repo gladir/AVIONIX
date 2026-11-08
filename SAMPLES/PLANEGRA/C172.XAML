@@ -1,0 +1,58 @@
+<!-- Cessna 172S Skyhawk : masse (lb) en fonction du bras de levier du centre de gravite (pouces apres la reference). Valeurs illustratives pour tester PLANEGRA, verifier le manuel de vol pour un usage reel. -->
+<graph:Plot Width="336" Height="336" PlotMargins="0"
+    Background="Transparent" PlotAreaBorderColor="#333333" Opacity="1"
+    Title="CESSNA 172S CG LIMITS" TitlePadding="20"
+    TextColor="LightGray" TitleFont="Open Sans" TitleFontSize="14" TitleFontWeight="Bold">
+  <graph:Plot.Axes>
+    <graph:LinearAxis Position="Left"
+        Minimum="1400" Maximum="2700" StringFormat="## 000"
+        MinorStep="100" MajorStep="200"
+        TextColor="Gray" Font="Open Sans" FontSize="12" FontWeight="Normal"
+        MajorGridlineColor="#333333" MajorGridlineStyle="Solid"
+        MinorGridlineColor="#333333" MinorGridlineStyle="Solid"
+        MinorTickSize="0" MajorTickSize="0"
+        AxisDistance="12" AxisTickToLabelDistance="0" />
+    <graph:LinearAxis Position="Bottom"
+        Minimum="32" Maximum="50"
+        MinorStep="1" MajorStep="2"
+        TextColor="Gray" Font="Open Sans" FontSize="12" FontWeight="Normal"
+        MajorGridlineColor="#333333" MajorGridlineStyle="Solid"
+        MinorGridlineColor="#333333" MinorGridlineStyle="Solid"
+        MinorTickSize="0" MajorTickSize="0"
+        AxisDistance="12" AxisTickToLabelDistance="0" />
+  </graph:Plot.Axes>
+  <graph:Plot.Series>
+    <graph:LineSeries Color="Orange" LineStyle="Solid" StrokeThickness="1">
+      <graph:LineSeries.ItemsSource>
+        <local:DataPointList>
+          <graph:DataPoint><x:Arguments><x:Double>35.0</x:Double><x:Double>1500</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>35.0</x:Double><x:Double>1950</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>41.0</x:Double><x:Double>2550</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>47.3</x:Double><x:Double>2550</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>47.3</x:Double><x:Double>1500</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>35.0</x:Double><x:Double>1500</x:Double></x:Arguments></graph:DataPoint>
+        </local:DataPointList>
+      </graph:LineSeries.ItemsSource>
+    </graph:LineSeries>
+  </graph:Plot.Series>
+  <graph:Plot.Annotations>
+    <graph:TextAnnotation Text="FWD LIMIT 35.0 IN"
+        TextPosition="{graph:DataPoint 34.3,1900}" TextRotation="270"
+        TextColor="DarkGray" FontFamily="Open Sans" FontSize="12" FontWeight="Bold" />
+    <graph:TextAnnotation Text="AFT LIMIT 47.3 IN"
+        TextPosition="{graph:DataPoint 48.0,1900}" TextRotation="270"
+        TextColor="DarkGray" FontFamily="Open Sans" FontSize="12" FontWeight="Bold" />
+    <graph:PolygonAnnotation Layer="BelowAxes"
+        Fill="#161F21" LineStyle="Solid">
+      <graph:PolygonAnnotation.Points>
+        <local:DataPointList>
+          <graph:DataPoint><x:Arguments><x:Double>35.0</x:Double><x:Double>1500</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>35.0</x:Double><x:Double>1950</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>41.0</x:Double><x:Double>2550</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>47.3</x:Double><x:Double>2550</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>47.3</x:Double><x:Double>1500</x:Double></x:Arguments></graph:DataPoint>
+        </local:DataPointList>
+      </graph:PolygonAnnotation.Points>
+    </graph:PolygonAnnotation>
+  </graph:Plot.Annotations>
+</graph:Plot>

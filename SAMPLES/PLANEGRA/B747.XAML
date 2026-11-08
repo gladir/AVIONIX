@@ -1,0 +1,70 @@
+<!-- Boeing 747-400 : masse (lb) en fonction du centre de gravite (% MAC). Valeurs illustratives pour tester PLANEGRA, ne pas utiliser pour un vol reel. -->
+<graph:Plot Width="336" Height="336" PlotMargins="0"
+    Background="Transparent" PlotAreaBorderColor="#333333" Opacity="1"
+    Title="BOEING 747-400 CG LIMITS" TitlePadding="20"
+    TextColor="LightGray" TitleFont="Open Sans" TitleFontSize="14" TitleFontWeight="Bold">
+  <graph:Plot.Axes>
+    <graph:LinearAxis Position="Left"
+        Minimum="350000" Maximum="900000" StringFormat="## 000"
+        MinorStep="50000" MajorStep="100000"
+        TextColor="Gray" Font="Open Sans" FontSize="12" FontWeight="Normal"
+        MajorGridlineColor="#333333" MajorGridlineStyle="Solid"
+        MinorGridlineColor="#333333" MinorGridlineStyle="Solid"
+        MinorTickSize="0" MajorTickSize="0"
+        AxisDistance="12" AxisTickToLabelDistance="0" />
+    <graph:LinearAxis Position="Bottom"
+        Minimum="0" Maximum="40"
+        MinorStep="2" MajorStep="5"
+        TextColor="Gray" Font="Open Sans" FontSize="12" FontWeight="Normal"
+        MajorGridlineColor="#333333" MajorGridlineStyle="Solid"
+        MinorGridlineColor="#333333" MinorGridlineStyle="Solid"
+        MinorTickSize="0" MajorTickSize="0"
+        AxisDistance="12" AxisTickToLabelDistance="0" />
+  </graph:Plot.Axes>
+  <graph:Plot.Series>
+    <graph:LineSeries Color="Orange" LineStyle="Solid" StrokeThickness="1">
+      <graph:LineSeries.ItemsSource>
+        <local:DataPointList>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>400000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>500000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>14</x:Double><x:Double>650000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>19</x:Double><x:Double>875000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>31</x:Double><x:Double>875000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>33</x:Double><x:Double>700000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>33</x:Double><x:Double>400000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>400000</x:Double></x:Arguments></graph:DataPoint>
+        </local:DataPointList>
+      </graph:LineSeries.ItemsSource>
+    </graph:LineSeries>
+    <graph:LineSeries Color="Orange" LineStyle="Dash" StrokeThickness="1">
+      <graph:LineSeries.ItemsSource>
+        <local:DataPointList>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>542500</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>33</x:Double><x:Double>542500</x:Double></x:Arguments></graph:DataPoint>
+        </local:DataPointList>
+      </graph:LineSeries.ItemsSource>
+    </graph:LineSeries>
+  </graph:Plot.Series>
+  <graph:Plot.Annotations>
+    <graph:TextAnnotation Text="FWD LIMIT 10 %MAC"
+        TextPosition="{graph:DataPoint 8.4,620000}" TextRotation="270"
+        TextColor="DarkGray" FontFamily="Open Sans" FontSize="12" FontWeight="Bold" />
+    <graph:TextAnnotation Text="AFT LIMIT 33 %MAC"
+        TextPosition="{graph:DataPoint 34.6,620000}" TextRotation="270"
+        TextColor="DarkGray" FontFamily="Open Sans" FontSize="12" FontWeight="Bold" />
+    <graph:PolygonAnnotation Layer="BelowAxes"
+        Fill="#161F21" LineStyle="Solid">
+      <graph:PolygonAnnotation.Points>
+        <local:DataPointList>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>400000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>10</x:Double><x:Double>500000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>14</x:Double><x:Double>650000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>19</x:Double><x:Double>875000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>31</x:Double><x:Double>875000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>33</x:Double><x:Double>700000</x:Double></x:Arguments></graph:DataPoint>
+          <graph:DataPoint><x:Arguments><x:Double>33</x:Double><x:Double>400000</x:Double></x:Arguments></graph:DataPoint>
+        </local:DataPointList>
+      </graph:PolygonAnnotation.Points>
+    </graph:PolygonAnnotation>
+  </graph:Plot.Annotations>
+</graph:Plot>

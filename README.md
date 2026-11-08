@@ -69,6 +69,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
     		<td>Cette commande permet de calculer la durée du vol d'un avion entre deux villes.</td>
 	</tr>
 	<tr>
+		<td><b>PLANEGRA.PAS</b></td>
+		<td>Cette commande permet de calculer les limites du centre de gravité d'un avion à partir d'une enveloppe masse/centre de gravité au format XAML (Avionix).</td>
+	</tr>
+	<tr>
 		<td><b>PORTANCE.PAS</b></td>
 		<td>Cette commande permet de calculer la portance des ailes d'un avion.</td>
     	</tr>
