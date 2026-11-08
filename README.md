@@ -80,6 +80,8 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 
 Le r&eacute;pertoire <code>SAMPLES/FLIGHT</code> contient une fiche de vol (<code>.FLT</code>) pour chacun des avions de <code>SAMPLES/OPENVSP</code> (m&ecirc;me nom de fichier : <code>C172.VSP</code> donne <code>C172.FLT</code>). Chaque fiche est un fichier texte de lignes <code>CLE=VALEUR</code> (masse, surface alaire, motorisation, trains, volets, vitesses limites, gouvernes, dimensions du mod&egrave;le 3D, etc.) qu'il est possible de modifier ou d'ajouter : <code>FLIGHT.PAS</code> en cherche la liste au d&eacute;marrage (dans <code>SAMPLES/FLIGHT</code> ou <code>../SAMPLES/FLIGHT</code>) et, si le r&eacute;pertoire est absent, utilise quatre avions int&eacute;gr&eacute;s.
 
+<code>FLIGHT.PAS</code> accepte deux options, disponibles uniquement avec Free Pascal : <code>-maxcolors</code> utilise le nombre maximal de couleurs (couleurs vraies 24 bits, ombrage continu des avions et d&eacute;grad&eacute; de ciel) et <code>-maxscreen</code> utilise la r&eacute;solution maximale disponible (la vue 3D occupe tout l'&eacute;cran, le tableau de bord reste centr&eacute; en bas). Elles se combinent : <code>FLIGHT -maxscreen -maxcolors</code>.
+
 Les avions sont dessin&eacute;s en 3D &agrave; partir de la g&eacute;om&eacute;trie r&eacute;elle de <code>SAMPLES/OPENVSP/*.VSP</code> (ailes &agrave; profil NACA, fuselages arrondis, nacelles, h&eacute;lices, roues, verri&egrave;res) avec ombrage &agrave; cinq tons de gris, et un aper&ccedil;u tournant est affich&eacute; dans la liste des avions. Le niveau de d&eacute;tail du menu r&egrave;gle la finesse du maillage.
 
 <h2>Compilation</h2>

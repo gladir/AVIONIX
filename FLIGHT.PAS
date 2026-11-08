@@ -925,6 +925,88 @@ Var
  TouchedDown: Boolean;
  StopShown  : Boolean;
 
+Const
+ { Les 16 couleurs de base ; 5 et 13 sont des gris pour l'ombrage }
+ UiPal : Array[0..15,0..2] Of Byte = (
+  (0,0,0),(0,0,170),(0,170,0),(0,170,170),
+  (170,0,0),(212,212,212),(170,85,0),(170,170,170),
+  (85,85,85),(85,85,255),(85,255,85),(85,255,255),
+  (255,85,85),(128,128,128),(255,255,85),(255,255,255));
+
+Var
+ { Options de la ligne de commande }
+ MaxColors  : Boolean;     { -maxcolors : couleurs directes }
+ MaxScreen  : Boolean;     { -maxscreen : resolution maximale }
+ TrueMode   : Boolean;     { mode graphique en couleurs directes (RGB) }
+ UiRGB      : Array[0..15] Of LongInt;
+
+ { Taille reelle de l'ecran et de la vue 3D ; ecran virtuel 640x480 }
+ ScrW, ScrH : Integer;
+ ViewW      : Integer;
+ ViewH      : Integer;
+ VOX, VOY   : Integer;     { origine du repere virtuel }
+
+{$IFDEF FPC}
+{ En couleurs directes, les couleurs 0 a 15 sont traduites en RGB ;
+  les autres valeurs sont transmises telles quelles. }
+Function MapC(C:LongInt):LongInt;
+Begin
+ If TrueMode and(C>=0)and(C<=15)Then MapC:=UiRGB[C] Else MapC:=C;
+End;
+
+Procedure SetColor(C:LongInt);
+Begin
+ PtcGraph.SetColor(MapC(C));
+End;
+
+Procedure SetFillStyle(Pat:Word;C:LongInt);
+Begin
+ PtcGraph.SetFillStyle(Pat,MapC(C));
+End;
+
+Procedure PutPixel(X,Y:Integer;C:LongInt);
+Begin
+ PtcGraph.PutPixel(X,Y,MapC(C));
+End;
+{$ENDIF}
+
+{ Fenetre graphique relative a l'origine virtuelle }
+Procedure SetVV(X1,Y1,X2,Y2:Integer);
+Begin
+ SetViewPort(VOX+X1,VOY+Y1,VOX+X2,VOY+Y2,True);
+End;
+
+{ Ecran virtuel 640x480 centre : menus, aide, liste des avions }
+Procedure CtxMenu;
+Begin
+ VOX:=(ScrW-640)div 2;
+ VOY:=(ScrH-480)div 2;
+ SetVV(0,0,639,479);
+End;
+
+{ Tableau de bord : colle en bas de l'ecran, centre }
+Procedure CtxPanel;
+Begin
+ VOX:=(ScrW-640)div 2;
+ VOY:=ScrH-480;
+ SetVV(0,0,639,479);
+End;
+
+{ Messages superposes a la vue 3D }
+Procedure CtxOverlay;
+Begin
+ VOX:=(ScrW-640)div 2;
+ VOY:=0;
+ If ViewH<480 Then SetVV(0,0,639,ViewH-1) Else SetVV(0,0,639,479);
+End;
+
+Procedure ClearScreenAll;
+Begin
+ SetViewPort(0,0,ScrW-1,ScrH-1,True);
+ SetFillStyle(SolidFill,Black);
+ Bar(0,0,ScrW-1,ScrH-1);
+End;
+
 { ------------------------------------------------------------------ }
 { Utilitaires                                                        }
 { ------------------------------------------------------------------ }
@@ -2650,6 +2732,37 @@ Begin
  End;
 End;
 
+{$IFDEF FPC}
+{ Ombrage continu en couleurs directes : teinte RGB de l'avion modulee
+  par l'eclairement (Nl de -1 a 1) }
+Function MTrueShade(Base:Integer;Nl:Real;IsNight:Boolean):LongInt;
+Const
+ TB:Array[0..15,0..2] Of Byte = (
+  (12,12,14),(30,50,175),(30,135,55),(40,165,175),
+  (190,30,30),(220,220,224),(150,105,50),(205,208,214),
+  (112,114,120),(75,105,235),(85,205,95),(150,232,246),
+  (240,72,72),(150,152,158),(245,222,60),(242,242,246));
+Var
+ F,Hi:Real;
+ R,G,B:LongInt;
+ V:LongInt;
+Begin
+ F:=0.28+0.72*Clamp((Nl+0.35)/1.35,0.0,1.0);
+ Hi:=0.0;
+ If Nl>0.85 Then Hi:=(Nl-0.85)*60.0;
+ If IsNight Then Begin F:=F*0.35; Hi:=0.0; End;
+ R:=Round(TB[Base,0]*F+Hi);
+ G:=Round(TB[Base,1]*F+Hi);
+ B:=Round(TB[Base,2]*F+Hi);
+ If R>255 Then R:=255;
+ If G>255 Then G:=255;
+ If B>255 Then B:=255;
+ V:=(R shl 16)or(G shl 8)or B;
+ If V<=15 Then V:=16;
+ MTrueShade:=V;
+End;
+{$ENDIF}
+
 { Tri decroissant des quadrilateres visibles }
 Procedure MSortQuads(N:Integer);
 Var
@@ -2679,7 +2792,8 @@ Procedure MdlDraw(Const C:TCam;Const P,F,R,U:TVec;GearPos,Spool:Real;
 Var
  Dx,Dy,Dz,Cbx,Cby,Cbz,Crx,Cry,Crz,Cux,Cuy,Cuz,Cfx,Cfy,Cfz:Real;
  Sbx,Sby,Sbz,Vx,Vy,Vz,Zc,Sx,Sy,Qx,Qy,Qz,Nl,Foc:Real;
- I,K,N,Lv,Col:Integer;
+ I,K,N,Lv:Integer;
+ Col:LongInt;
  A,B,Cc,D:Word;
  Spin,GearUp:Boolean;
  Pts:Array[0..3] Of PointType;
@@ -2768,6 +2882,10 @@ Begin
   End;
   Col:=MCol[MQ^[I].G];
   If MQ^[I].F=7 Then Col:=MCol2;
+  {$IFDEF FPC}
+  If TrueMode Then Col:=MTrueShade(Col,Nl,IsNight)
+  Else
+  {$ENDIF}
   Col:=MShade(Col,Lv);
   Pts[0].X:=MSX^[A]; Pts[0].Y:=MSY^[A];
   Pts[1].X:=MSX^[B]; Pts[1].Y:=MSY^[B];
@@ -3601,11 +3719,26 @@ Var
  SX,SY,Z:Real;
  V:TVec;
  SkyCol,GndCol:Integer;
+ Y0:Integer;
+ T:Real;
 Begin
  If Night Then Begin SkyCol:=Black; GndCol:=Black; End
           Else Begin SkyCol:=LightCyan; GndCol:=Green; End;
  SetFillStyle(SolidFill,SkyCol);
  Bar(VX1,VY1,VX2,VY2);
+{$IFDEF FPC}
+ If TrueMode and(Not Night)Then Begin
+  { degrade de ciel : plus fonce vers le zenith }
+  Y0:=VY1;
+  While Y0<=VY2 do Begin
+   T:=Clamp((C.CY-Y0)/C.CY,0.0,1.0);
+   SetFillStyle(SolidFill,(Round(175.0-125.0*T)shl 16)or
+                (Round(215.0-95.0*T)shl 8)or Round(245.0-20.0*T));
+   Bar(VX1,Y0,VX2,Y0+3);
+   Y0:=Y0+4;
+  End;
+ End;
+{$ENDIF}
 
  { le sol est le demi-plan ou  A*sx + B*sy + C0 < 0 }
  A:=C.R.Z/C.Foc;
@@ -4292,9 +4425,9 @@ Var
  Ap:Integer;
 Begin
  Sp:=Specs[F.Spec];
- C.Foc:=FOC0;
- C.CX:=SCR_W/2.0;
- C.CY:=VIEW_H/2.0;
+ C.Foc:=FOC0*ViewW/640.0;
+ C.CX:=ViewW/2.0;
+ C.CY:=ViewH/2.0;
  Case ViewMode of
   VIEW_CHASE:Begin
      Dist:=Sp.Len*2.0+5.0;
@@ -4315,7 +4448,7 @@ Begin
       C.P.Z:=F.P.Z-F.F.Z*Dist+Dist*0.3;
      End
       Else
-     C.Foc:=FOC0*Clamp(D/(Sp.Len*8.0),1.0,14.0);
+     C.Foc:=FOC0*ViewW/640.0*Clamp(D/(Sp.Len*8.0),1.0,14.0);
      LookAt(C,F.P);
     End;
   Else Begin
@@ -4395,26 +4528,28 @@ End;
 Procedure DrawCockpitFrame;
 Var
  P:Array[0..3] Of PointType;
+ HW:Integer;
 Begin
- P[0].X:=0;   P[0].Y:=VIEW_H-22;
- P[1].X:=200; P[1].Y:=VIEW_H-30;
- P[2].X:=440; P[2].Y:=VIEW_H-30;
- P[3].X:=639; P[3].Y:=VIEW_H-22;
+ HW:=ViewW div 2;
+ P[0].X:=0;           P[0].Y:=ViewH-22;
+ P[1].X:=HW-ViewW div 5; P[1].Y:=ViewH-30;
+ P[2].X:=HW+ViewW div 5; P[2].Y:=ViewH-30;
+ P[3].X:=ViewW-1;     P[3].Y:=ViewH-22;
  SetFillStyle(SolidFill,DarkGray);
  SetColor(Black);
- Bar(0,VIEW_H-21,639,VIEW_H-1);
+ Bar(0,ViewH-21,ViewW-1,ViewH-1);
  FillPoly(4,P);
  SetColor(White);
- Line(320,VIEW_H-44,320,VIEW_H-34);
- Line(310,VIEW_H-39,330,VIEW_H-39);
+ Line(HW,ViewH-44,HW,ViewH-34);
+ Line(HW-10,ViewH-39,HW+10,ViewH-39);
 End;
 
 Procedure RenderScene(Var C:TCam;Var F:TFlt);
 Var
  I,K:Integer;
 Begin
- SetViewPort(0,0,SCR_W-1,VIEW_H-1,True);
- VX1:=0; VY1:=0; VX2:=SCR_W-1; VY2:=VIEW_H-1;
+ SetViewPort(0,0,ViewW-1,ViewH-1,True);
+ VX1:=0; VY1:=0; VX2:=ViewW-1; VY2:=ViewH-1;
  DrawSky(C);
  DrawFields(C);
  DrawLakes(C);
@@ -4430,10 +4565,9 @@ Begin
  If InCloud and(ViewMode=VIEW_COCKPIT)Then Begin
   If Night Then SetFillStyle(SolidFill,DarkGray)
            Else SetFillStyle(SolidFill,LightGray);
-  Bar(0,0,SCR_W-1,VIEW_H-1);
+  Bar(0,0,ViewW-1,ViewH-1);
  End;
  If ViewMode=VIEW_COCKPIT Then DrawCockpitFrame;
- SetViewPort(0,0,SCR_W-1,479,True);
 End;
 
 { ------------------------------------------------------------------ }
@@ -4524,7 +4658,10 @@ End;
 
 Procedure DrawPanelBackground;
 Begin
- SetViewPort(0,0,SCR_W-1,479,True);
+ SetViewPort(0,0,ScrW-1,ScrH-1,True);
+ SetFillStyle(SolidFill,Black);
+ Bar(0,ViewH,ScrW-1,ScrH-1);
+ CtxPanel;
  SetFillStyle(SolidFill,Black);
  Bar(0,PNL_Y,SCR_W-1,479);
  SetColor(LightGray);
@@ -4647,7 +4784,7 @@ Begin
  AxesToEuler(F.F,F.R,F.U,Ps,Th,Ph);
  If Not InstChanged(1,Round(Th*180.0/Pi*4.0)*1000+Round(Ph*180.0/Pi*2.0)+
                     OptNight*7)Then Exit;
- SetViewPort(AX,AY,AX+AS_,AY+AS_,True);
+ SetVV(AX,AY,AX+AS_,AY+AS_);
  CXl:=AS_ div 2; CYl:=AS_ div 2;
  SetFillStyle(SolidFill,LightBlue);
  Bar(0,0,AS_,AS_);
@@ -4707,7 +4844,7 @@ Begin
  Bar(CXl-1,CYl-1,CXl+1,CYl+1);
  SetColor(LightGray);
  Rectangle(0,0,AS_,AS_);
- SetViewPort(0,0,SCR_W-1,479,True);
+ SetVV(0,0,639,479);
 End;
 
 { Altimetre }
@@ -5000,6 +5137,7 @@ End;
 
 Procedure DrawPanel(Var F:TFlt);
 Begin
+ CtxPanel;
  SetTextStyle(DefaultFont,HorizDir,1);
  DrawASI(F);
  DrawAH(F);
@@ -5054,7 +5192,7 @@ Var
  Sp:TSpec;
  R:Integer;
 Begin
- SetViewPort(0,0,SCR_W-1,479,True);
+ CtxOverlay;
  SetTextStyle(DefaultFont,HorizDir,1);
  If ViewMode<>VIEW_MAP Then DrawILSBox(F);
  If F.Crashed Then Begin
@@ -5078,8 +5216,8 @@ End;
 
 Procedure MapXY(Var F:TFlt;X,Y:Real;Var SX,SY:Integer);
 Begin
- SX:=SCR_W div 2+Round((X-F.P.X)/MapZoom);
- SY:=VIEW_H div 2-Round((Y-F.P.Y)/MapZoom);
+ SX:=ViewW div 2+Round((X-F.P.X)/MapZoom);
+ SY:=ViewH div 2-Round((Y-F.P.Y)/MapZoom);
 End;
 
 Procedure DrawMap(Var F:TFlt);
@@ -5089,9 +5227,9 @@ Var
  Hd,CH,SH,PX,PY:Real;
  Ex,Ey,Hl:Real;
 Begin
- SetViewPort(0,0,SCR_W-1,VIEW_H-1,True);
+ SetViewPort(0,0,ViewW-1,ViewH-1,True);
  SetFillStyle(SolidFill,Green);
- Bar(0,0,SCR_W-1,VIEW_H-1);
+ Bar(0,0,ViewW-1,ViewH-1);
  { lacs }
  SetFillStyle(SolidFill,Blue); SetColor(Blue);
  For I:=0 to MAX_LAKE-1 do Begin
@@ -5115,7 +5253,7 @@ Begin
  SetFillStyle(SolidFill,DarkGray);
  For I:=0 to NBld-1 do Begin
   MapXY(F,Blds[I].X,Blds[I].Y,X,Y);
-  If(X>0)and(X<SCR_W-1)and(Y>0)and(Y<VIEW_H-1)Then Bar(X-1,Y-1,X+1,Y+1);
+  If(X>0)and(X<ViewW-1)and(Y>0)and(Y<ViewH-1)Then Bar(X-1,Y-1,X+1,Y+1);
  End;
  { aeroports }
  SetTextStyle(DefaultFont,HorizDir,1);
@@ -5159,41 +5297,121 @@ Begin
  FillPoly(4,Pts);
  { echelle }
  SetFillStyle(SolidFill,Black);
- Bar(8,VIEW_H-22,128,VIEW_H-6);
+ Bar(8,ViewH-22,128,ViewH-6);
  SetColor(White);
- Line(14,VIEW_H-12,14+Round(10000.0/MapZoom),VIEW_H-12);
- PutText(14,VIEW_H-20,'10 km',White);
- SetViewPort(0,0,SCR_W-1,479,True);
+ Line(14,ViewH-12,14+Round(10000.0/MapZoom),ViewH-12);
+ PutText(14,ViewH-20,'10 km',White);
 End;
 
 { ------------------------------------------------------------------ }
 { Menus                                                             }
 { ------------------------------------------------------------------ }
 
-{ Deux couleurs de la palette sont redefinies en gris pour l'ombrage }
+{ Palette : les 16 couleurs restent identiques dans les modes indexes ;
+  en couleurs directes, elles sont converties en RGB. Les couleurs 5 et 13
+  sont des gris servant a l'ombrage. }
 Procedure InitPalette;
+Var
+ I:Integer;
 Begin
- SetRGBPalette(EGAMagenta,212,212,212);
- SetRGBPalette(EGALightMagenta,128,128,128);
+ For I:=0 to 15 do
+  UiRGB[I]:=(LongInt(UiPal[I,0])shl 16)or(LongInt(UiPal[I,1])shl 8)or
+            UiPal[I,2];
+ {$IFDEF FPC}
+  TrueMode:=GetMaxColor>255;
+  If TrueMode Then Exit;
+  If GetMaxColor>15 Then Begin
+   For I:=0 to 15 do SetRGBPalette(I,UiPal[I,0],UiPal[I,1],UiPal[I,2]);
+  End
+   Else Begin
+    SetRGBPalette(EGAMagenta,212,212,212);
+    SetRGBPalette(EGALightMagenta,128,128,128);
+   End;
+ {$ELSE}
+  TrueMode:=False;
+  SetRGBPalette(EGAMagenta,212,212,212);
+  SetRGBPalette(EGALightMagenta,128,128,128);
+ {$ENDIF}
+End;
+
+{ Choix du pilote et du mode graphique : VGA 640 x 480 sans option ;
+  -maxscreen : resolution maximale (pilote D8bit) ; -maxcolors : plus grand
+  nombre de couleurs (couleurs directes 24 bits si disponibles). Sous Turbo
+  Pascal, ces options sont sans effet. }
+Procedure SelectScreenDriverMode(WantMaxScreen,WantMaxColors:Boolean;
+                                 Var Driver,Mode:Integer);
+{$IFDEF FPC}
+Var
+ LoMode,HiMode:SmallInt;
+ M,Best:PModeInfo;
+ BestArea,Area:LongInt;
+ Found:Boolean;
+{$ENDIF}
+Begin
+ {$IFDEF FPC}
+ Found:=False;
+ If WantMaxColors Then Begin
+  M:=QueryAdapterInfo;
+  Best:=Nil;
+  BestArea:=0;
+  While M<>Nil do Begin
+   If M^.DirectColor and(M^.MaxColor>=16777216)Then Begin
+    Area:=(M^.MaxX+1)*(M^.MaxY+1);
+    If WantMaxScreen Then Begin
+     If Area>BestArea Then Begin
+      Best:=M;
+      BestArea:=Area;
+     End;
+    End
+     Else
+    If(M^.MaxX+1>=640)and(M^.MaxY+1>=480)Then Begin
+     If(Best=Nil)or(Area<BestArea)Then Begin
+      Best:=M;
+      BestArea:=Area;
+     End;
+    End;
+   End;
+   M:=M^.Next;
+  End;
+  If Best<>Nil Then Begin
+   Driver:=Best^.DriverNumber;
+   Mode:=Best^.ModeNumber;
+   Found:=True;
+  End;
+ End;
+ If Not Found Then Begin
+  Driver:=VGA;
+  Mode:=VGAHi;
+  If WantMaxScreen Then Begin
+   Driver:=D8bit;
+   GetModeRange(Driver,LoMode,HiMode);
+   If HiMode>=LoMode Then Mode:=HiMode
+    Else Begin Driver:=VGA; Mode:=VGAHi; End;
+  End;
+ End;
+ {$ELSE}
+ Driver:=Detect;
+ Mode:=VGAHi;
+ {$ENDIF}
 End;
 
 Procedure InitGraphicsMode;
 Var
  Driver,Mode,Err:Integer;
 Begin
- {$IFDEF FPC}
-  Driver:=VGA;
-  Mode:=VGAHi;
- {$ELSE}
-  Driver:=Detect;
-  Mode:=VGAHi;
- {$ENDIF}
+ SelectScreenDriverMode(MaxScreen,MaxColors,Driver,Mode);
  InitGraph(Driver,Mode,'');
  Err:=GraphResult;
  If Err<>grOk Then Begin
   WriteLn('Erreur graphique : ',GraphErrorMsg(Err));
   Halt(1);
  End;
+ ScrW:=GetMaxX+1;
+ ScrH:=GetMaxY+1;
+ If ScrW<640 Then ScrW:=640;
+ If ScrH<480 Then ScrH:=480;
+ ViewW:=ScrW;
+ ViewH:=ScrH-144;
  InitPalette;
  SetTextStyle(DefaultFont,HorizDir,1);
 End;
@@ -5338,7 +5556,8 @@ Var
  I:Integer;
  Ch:Char;
 Begin
- SetViewPort(0,0,SCR_W-1,479,True);
+ ClearScreenAll;
+ CtxMenu;
  SetFillStyle(SolidFill,Black);
  Bar(0,0,SCR_W-1,479);
  SetColor(LightCyan);
@@ -5422,7 +5641,7 @@ Var
  Sp:TSpec;
 Begin
  Sp:=Specs[SLOT_CUR];
- SetViewPort(419,41,627,189,True);
+ SetVV(419,41,627,189);
  VX1:=0; VY1:=0; VX2:=208; VY2:=148;
  SetFillStyle(SolidFill,LightCyan);
  Bar(0,0,208,82);
@@ -5440,7 +5659,7 @@ Begin
   MdlDraw(C,P,F,R,U,1.0,0.0,False,False);
  End
   Else DrawLogoPlane(104,75,Ang,1.2,White,LightGray);
- SetViewPort(0,0,SCR_W-1,479,True);
+ SetVV(0,0,639,479);
 End;
 
 { Liste des avions : choix du modele a piloter }
@@ -5462,7 +5681,8 @@ Begin
  Top:=0;
  Done:=False;
  PickAircraft:=False;
- SetViewPort(0,0,SCR_W-1,479,True);
+ ClearScreenAll;
+ CtxMenu;
  SetTextStyle(DefaultFont,HorizDir,1);
  While Not Done do Begin
   If Sel<Top Then Top:=Sel;
@@ -5561,8 +5781,9 @@ Begin
  Done:=False;
  MainMenu:=0;
  NoSound;
+ ClearScreenAll;
  While Not Done do Begin
-  SetViewPort(0,0,SCR_W-1,479,True);
+  CtxMenu;
   DrawTitleBackground;
   CenterBig(20,'FLIGHT',6,White);
   CenterBig(78,Tr(M_SUB),2,Yellow);
@@ -5646,7 +5867,7 @@ Begin
  Done:=False;
  PauseMenu:=0;
  NoSound;
- SetViewPort(0,0,SCR_W-1,479,True);
+ CtxMenu;
  While Not Done do Begin
   SetFillStyle(SolidFill,Blue);
   Bar(150,110,490,230);
@@ -5804,6 +6025,7 @@ Var
  Res,N,I:Integer;
 Begin
  SetupFlight(Fl);
+ ClearScreenAll;
  DrawPanelBackground;
  MapZoom:=250.0;
  T0:=NowSec;
@@ -5855,6 +6077,34 @@ End;
 Var
  Rc:Integer;
 
+{ Options -maxscreen et -maxcolors (sans effet sous Turbo Pascal) }
+Procedure ParseCommandLine;
+Var
+ I:Integer;
+ Arg:String;
+Begin
+ MaxScreen:=False;
+ MaxColors:=False;
+ For I:=1 to ParamCount do Begin
+  Arg:=UpStr(ParamStr(I));
+  If(Arg='-MAXSCREEN')or(Arg='/MAXSCREEN')Then MaxScreen:=True Else
+  If(Arg='-MAXCOLORS')or(Arg='/MAXCOLORS')Then MaxColors:=True;
+ End;
+End;
+
+Function HelpRequested:Boolean;
+Var
+ I:Integer;
+ Arg:String;
+Begin
+ HelpRequested:=False;
+ For I:=1 to ParamCount do Begin
+  Arg:=UpStr(ParamStr(I));
+  If(Arg='/?')or(Arg='-?')or(Arg='-H')or(Arg='--HELP')or(Arg='/H')or
+    (Arg='/HELP')Then HelpRequested:=True;
+ End;
+End;
+
 BEGIN
  {$IFDEF FPC}
   {$IFDEF WINDOWS}
@@ -5862,16 +6112,25 @@ BEGIN
   {$ENDIF}
  {$ENDIF}
  DetectLanguage;
- If(ParamStr(1)='/?')or(ParamStr(1)='--help')or(ParamStr(1)='-h')Then Begin
+ If HelpRequested Then Begin
   WriteLn('FLIGHT - Cette commande permet de lancer un simulateur de vol ',
           '(clone de Flight Simulator).');
   WriteLn;
-  WriteLn('Syntaxe : FLIGHT');
+  WriteLn('Syntaxe : FLIGHT [-maxscreen] [-maxcolors]');
+  WriteLn('          FLIGHT /?');
   WriteLn;
+  WriteLn('  -maxscreen   Utilise la r',#130,'solution maximale disponible.');
+  WriteLn('  -maxcolors   Utilise le nombre maximal de couleurs ',
+          '(couleurs vraies).');
+  WriteLn('  /?           Affiche cette aide et quitte.');
+  WriteLn;
+  WriteLn('Les options -maxscreen et -maxcolors ne sont disponibles que ',
+          'sous Free Pascal.');
   WriteLn(' LANGUAGE=EN, GR, SP ou IT  Variable d''environnement pour ',
           'choisir la langue');
   Halt;
  End;
+ ParseCommandLine;
  InitSpecs;
  InitWorld;
  ScanAircraft;
