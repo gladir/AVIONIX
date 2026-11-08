@@ -35,6 +35,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet de détecter les avions mentionné dans un texte.</td>
 	</tr>
 	<tr>
+		<td><b>FLIGHT.PAS</b></td>
+		<td>Cette commande permet de lancer un clone de Flight Simulator, un simulateur de vol en mode graphique avec vue 3D (cockpit, externe, tour de contr&ocirc;le et carte), instruments de bord, relief, villes, a&eacute;roports, nuages, vent, vol de nuit, ILS, pilote automatique et quatre avions (Cessna 172, Pitts S-2B, Learjet 45 et Boeing 737-800). La langue est choisie avec la variable d'environnement <code>LANGUAGE</code> (fran&ccedil;ais par d&eacute;faut, <code>EN</code>, <code>GR</code>, <code>SP</code> ou <code>IT</code>).</td>
+	</tr>
+	<tr>
 		<td><b>ISA.PAS</b></td>
 		<td>Cette commande permet d'indiquer la pression atmosphérique.</td>
 	</tr>
