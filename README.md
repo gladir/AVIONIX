@@ -47,6 +47,10 @@ Voici la liste des différents fichiers proposés dans l'aviation :
 		<td>Cette commande permet d'effectuer l'estimation de la distance de décollage.</td>
 	</tr>
 	<tr>
+		<td><b>DECROCH.PAS</b></td>
+		<td>Cette commande permet de calculer la vitesse de décrochage et les performances en virage d'un avion (facteur de charge, rayon, taux de virage, inclinaison).</td>
+	</tr>
+	<tr>
 		<td><b>DESCENTE.PAS</b></td>
 		<td>Cette commande permet d'effectuer la simulation de la descente d'un avion.</td>
 	</tr>
