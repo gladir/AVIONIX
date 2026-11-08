@@ -9,6 +9,12 @@ Voici un aperçu de la soufflerie comme SOUFFLE.PAS (Soufflerie) :
 
 <img width="638" height="479" alt="image" src="https://github.com/user-attachments/assets/3743114c-fac7-4b00-8142-903e68449ffa" />
 
+Voici un aperçu de FLIGHT.PAS (Simulateur de vol) :
+
+<img width="636" height="481" alt="image" src="https://github.com/user-attachments/assets/a14dca95-10e5-4ec6-bbea-4871b3d0dc7a" />
+
+<img width="643" height="477" alt="image" src="https://github.com/user-attachments/assets/66e0aa7e-3d11-4391-aa70-e304b47236bf" />
+
 <h3>Liste des fichiers</h3>
 
 Voici la liste des différents fichiers proposés dans l'aviation :
